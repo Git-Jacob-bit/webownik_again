@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlmodel import Session, select
 from sqlalchemy.exc import OperationalError
+from fastapi.staticfiles import StaticFiles
 
 from security import get_password_hash
 from database import init_db, engine
@@ -52,7 +53,6 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Webownik API", lifespan=lifespan)
-
 # PODPINAMY ROUTERY
 app.include_router(auth.router)
 app.include_router(frontend.router)

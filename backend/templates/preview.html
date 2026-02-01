@@ -3,167 +3,55 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edycja: {{ deck.title }}</title>
+    <title>Podgląd: {{ deck.title }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <style>
-        body { background-color: #f8f9fa; padding-bottom: 50px; }
-        .question-card { border-radius: 12px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 25px; }
-        .view-mode .edit-controls { display: none; }
-        .edit-mode .view-controls { display: none; }
-        .answer-row-edit { background: #fdfdfd; border: 1px solid #eee; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
-        .correct-badge { color: #198754; font-weight: bold; }
+        body { background-color: #f8f9fa; padding: 30px 0; font-family: sans-serif; }
+        .deck-header { margin-bottom: 30px; border-bottom: 2px solid #dee2e6; padding-bottom: 15px; }
+        .question-block { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .question-text { font-weight: bold; font-size: 1.1rem; margin-bottom: 15px; color: #333; }
+        
+        .answer-row { 
+            padding: 10px 15px; 
+            margin-bottom: 5px; 
+            border-radius: 4px; 
+            border: 1px solid #eee;
+        }
+        /* Tylko poprawna odpowiedź wyróżnia się tłem */
+        .is-correct { 
+            background-color: #d1e7dd; 
+            border-color: #badbcc; 
+            color: #0f5132; 
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
 
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
-        <div>
-            <h1 class="h3 mb-0">{{ deck.title }}</h1>
-            <span class="badge bg-dark">Pytań: <span id="q-count">{{ questions|length }}</span></span>
-        </div>
-        <a href="/" class="btn btn-outline-dark"><i class="bi bi-house"></i> Powrót</a>
+<div class="container" style="max-width: 800px;">
+    <div class="deck-header d-flex justify-content-between align-items-center">
+        <h1 class="h3">{{ deck.title }}</h1>
+        <a href="/" class="btn btn-secondary btn-sm">Powrót</a>
     </div>
 
-    <div id="questions-container">
+    <div id="questions-list">
         {% for question in questions %}
-        <div class="card question-card p-4 view-mode" id="q-card-{{ question.id }}">
-            
-            <div class="view-controls">
-                <div class="d-flex justify-content-between align-items-start">
-                    <h5 class="mb-3 text-secondary">{{ loop.index }}. {{ question.content }}</h5>
-                    <button onclick="toggleEdit({{ question.id }}, true)" class="btn btn-sm btn-primary">
-                        <i class="bi bi-pencil-square"></i> Edytuj pytanie
-                    </button>
-                </div>
-                <div class="list-group list-group-flush mt-2">
-                    {% for answer in question.answers %}
-                    <div class="list-group-item border-0 ps-0">
-                        <i class="bi {{ 'bi-check-circle-fill text-success' if answer.is_correct else 'bi-circle text-muted' }}"></i>
-                        {{ answer.content }}
-                    </div>
-                    {% endfor %}
-                </div>
+        <div class="question-block">
+            <div class="question-text">
+                {{ loop.index }}. {{ question.content }}
             </div>
-
-            <div class="edit-controls">
-                <div class="mb-4">
-                    <label class="form-label fw-bold text-primary">Treść pytania:</label>
-                    <input type="text" class="form-control form-control-lg q-main-input" 
-                           id="q-input-{{ question.id }}" value="{{ question.content }}">
+            
+            <div class="answers-container">
+                {% for answer in question.answers %}
+                <div class="answer-row {% if answer.is_correct %}is-correct{% endif %}">
+                    {{ answer.content }}
                 </div>
-
-                <label class="form-label fw-bold">Odpowiedzi:</label>
-                <div class="ans-container" id="ans-container-{{ question.id }}">
-                    {% for answer in question.answers %}
-                    <div class="answer-row-edit d-flex align-items-center gap-3" data-ans-id="{{ answer.id }}">
-                        <div class="form-check">
-                            <input type="checkbox" class="form-check-input ans-correct-check" 
-                                   {% if answer.is_correct %}checked{% endif %}>
-                        </div>
-                        <input type="text" class="form-control ans-text-input" value="{{ answer.content }}">
-                    </div>
-                    {% endfor %}
-                </div>
-
-                <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
-                    <button onclick="deleteQuestion({{ question.id }})" class="btn btn-outline-danger">
-                        <i class="bi bi-trash"></i> Usuń pytanie
-                    </button>
-                    <div class="btn-group">
-                        <button onclick="toggleEdit({{ question.id }}, false)" class="btn btn-outline-secondary">Anuluj</button>
-                        <button onclick="saveFullQuestion({{ question.id }})" class="btn btn-success px-4">
-                            <i class="bi bi-check-lg"></i> Zapisz wszystkie zmiany
-                        </button>
-                    </div>
-                </div>
+                {% endfor %}
             </div>
         </div>
         {% endfor %}
     </div>
-
-    <div class="text-center mt-5">
-        <button class="btn btn-lg btn-outline-success border-2 fw-bold" onclick="addNewQuestionPrompt()">
-            <i class="bi bi-plus-circle"></i> Dodaj nowe pytanie
-        </button>
-    </div>
 </div>
-
-<script>
-    const token = localStorage.getItem('token');
-    const deckId = "{{ deck.id }}";
-
-    function toggleEdit(id, showEdit) {
-        const card = document.getElementById(`q-card-${id}`);
-        if (showEdit) {
-            card.classList.remove('view-mode');
-            card.classList.add('edit-mode');
-        } else {
-            // Przy anulowaniu najlepiej odświeżyć, by cofnąć zmiany w UI
-            location.reload();
-        }
-    }
-
-    // GŁÓWNA FUNKCJA ZAPISU
-    async function saveFullQuestion(qId) {
-        const card = document.getElementById(`q-card-${qId}`);
-        const content = document.getElementById(`q-input-${qId}`).value;
-        
-        // Zbieranie wszystkich odpowiedzi z tego konkretnego pytania
-        const answerRows = card.querySelectorAll('.answer-row-edit');
-        const answers = Array.from(answerRows).map(row => ({
-            id: row.getAttribute('data-ans-id'),
-            content: row.querySelector('.ans-text-input').value,
-            is_correct: row.querySelector('.ans-correct-check').checked
-        }));
-
-        const res = await fetch(`/decks/question/${qId}/full`, {
-            method: 'PUT',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Bearer ${token}` 
-            },
-            body: JSON.stringify({ content, answers })
-        });
-
-        if (res.ok) {
-            alert("Zmiany zapisane pomyślnie!");
-            location.reload(); // Odświeżamy, żeby "śmietnik" się wyczyścił
-        } else {
-            alert("Błąd zapisu. Sprawdź czy jesteś zalogowany.");
-        }
-    }
-
-    async function deleteQuestion(id) {
-        if (!confirm("Czy na pewno chcesz usunąć to pytanie?")) return;
-        
-        const res = await fetch(`/decks/question/${id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (res.ok) {
-            const card = document.getElementById(`q-card-${id}`);
-            card.style.opacity = '0';
-            setTimeout(() => {
-                card.remove();
-                document.getElementById('q-count').innerText = document.querySelectorAll('.question-card').length;
-            }, 300);
-        }
-    }
-
-    async function addNewQuestionPrompt() {
-        const content = prompt("Wpisz treść nowego pytania:");
-        if (!content) return;
-        const res = await fetch(`/decks/${deckId}/question`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ content })
-        });
-        if (res.ok) location.reload();
-    }
-</script>
 
 </body>
 </html>
