@@ -39,3 +39,17 @@ class Answer(SQLModel, table=True):
     
     # Relacje
     question: Optional[Question] = Relationship(back_populates="answers")
+
+# --- Dodaj to na samym dole pliku models.py ---
+
+class AnswerRead(SQLModel):
+    """Wersja odpowiedzi bezpieczna dla JSON (bez linku zwrotnego do pytania)"""
+    id: int
+    content: str
+    is_correct: bool
+
+class QuestionRead(SQLModel):
+    """Wersja pytania zawierająca listę bezpiecznych odpowiedzi"""
+    id: int
+    content: str
+    answers: List[AnswerRead] = []

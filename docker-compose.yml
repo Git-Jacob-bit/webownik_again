@@ -7,7 +7,7 @@ services:
     container_name: nauka_backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./backend:/app
+      - ./backend:/app:z
     ports:
       - "8000:8000"
     environment:
