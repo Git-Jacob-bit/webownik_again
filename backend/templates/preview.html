@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Podgląd - {{ deck.title }}</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 20px; margin-bottom: 20px; }
+        .back-btn { text-decoration: none; color: #555; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; }
+        .question-box { border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 8px; background: #f9f9f9; }
+        .q-content { font-weight: bold; margin-bottom: 10px; font-size: 1.1em; }
+        .answers-list { list-style: none; padding: 0; }
+        .answers-list li { padding: 5px; border-bottom: 1px solid #eee; }
+        .correct { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Podgląd: {{ deck.title }}</h1>
+        <a href="/" class="back-btn">← Wróć na główną</a>
+    </div>
+
+    <div>
+        <p>Liczba pytań: <strong>{{ questions|length }}</strong></p>
+    </div>
+
+    {% for question in questions %}
+    <div class="question-box">
+        <div class="q-content">{{ question.content }}</div>
+        <ul class="answers-list">
+            {% for answer in question.answers %}
+            <li class="{{ 'correct' if answer.is_correct else '' }}">
+                {{ answer.content }} 
+                {% if answer.is_correct %} (Poprawna) {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+        <p>Ten zestaw nie ma jeszcze żadnych pytań.</p>
+    {% endfor %}
+
+</body>
+</html>

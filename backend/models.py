@@ -53,3 +53,18 @@ class QuestionRead(SQLModel):
     id: int
     content: str
     answers: List[AnswerRead] = []
+
+# ... (zachowaj dotychczasowe importy i klasy User, Deck, Question, Answer)
+
+# --- NOWA TABELA: SESJA NAUKI ---
+class QuizSession(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)
+    deck_id: int = Field(index=True)
+    
+    # Przechowujemy kolejkę jako string, np. "1,5,2,1,5"
+    # To najprostszy sposób w SQLite na trzymanie listy intów
+    queue_str: str = "" 
+    
+    # Czy sesja jest aktywna
+    is_active: bool = True

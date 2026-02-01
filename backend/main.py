@@ -8,7 +8,7 @@ from database import init_db, engine
 from models import User
 
 # IMPORTUJEMY ROUTERY
-from routers import frontend, decks
+from routers import frontend, decks, quiz
 
 def wait_for_db():
     retries = 5
@@ -45,3 +45,4 @@ app = FastAPI(title="Webownik API", lifespan=lifespan)
 # PODPINAMY ROUTERY
 app.include_router(frontend.router)
 app.include_router(decks.router)
+app.include_router(quiz.router)

@@ -1,55 +1,189 @@
 <!DOCTYPE html>
 <html lang="pl">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Webownik - Wybierz Zestaw</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Webownik - Moje Zestawy</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f9;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+
+        /* Styl formularza wgrywania */
+        .upload-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .upload-section h2 {
+            margin-top: 0;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+
+        button.upload-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        button.upload-btn:hover {
+            background-color: #45a049;
+        }
+
+        /* Styl listy zestawów */
+        .deck-list {
+            display: grid;
+            gap: 15px;
+        }
+
+        .deck-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .deck-info h3 {
+            margin: 0 0 5px 0;
+            color: #2c3e50;
+        }
+
+        .deck-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Przyciski akcji */
+        .btn {
+            text-decoration: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-start {
+            background-color: #2196F3;
+            color: white;
+        }
+
+        .btn-preview {
+            background-color: #ff9800;
+            color: white;
+        }
+
+        .btn-delete {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+    </style>
 </head>
-<body class="bg-light">
 
-<div class="container py-5">
-    <div class="text-center mb-5">
-        <h1 class="display-4 fw-bold">🧠 Webownik</h1>
-        <p class="lead text-muted">Wybierz zestaw i zacznij naukę</p>
+<body>
+
+    <h1>Webownik</h1>
+
+    <div class="upload-section">
+        <h2>Dodaj nowy zestaw</h2>
+        <form action="/decks/upload-form" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="deck_name">Nazwa zestawu:</label>
+                <input type="text" id="deck_name" name="deck_name" required
+                    placeholder="np. Systemy Operacyjne - Kolokwium 1">
+            </div>
+            <div class="form-group">
+                <label for="files">Wybierz pliki .txt:</label>
+                <input type="file" id="files" name="files" multiple required accept=".txt">
+            </div>
+            <button type="submit" class="upload-btn">Wgraj zestaw</button>
+        </form>
     </div>
 
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="list-group shadow-sm">
-                {% for deck in decks %}
-                <a href="/nauka/{{ deck.id }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-4">
-                    <div>
-                        <h5 class="mb-1">{{ deck.title }}</h5>
-                        <small class="text-muted">ID zestawu: {{ deck.id }}</small>
-                    </div>
-                    <span class="badge bg-primary rounded-pill">Rozpocznij &rarr;</span>
-                </a>
-                {% else %}
-                <div class="alert alert-warning text-center">
-                    Brak zestawów. Użyj Swaggera, aby wgrać plik .txt!
-                </div>
-                {% endfor %}
-            </div>
+    <hr>
 
-            <div class="card p-4 shadow-sm">
-                <h4>Wgraj nowy zestaw (z folderu)</h4>
-                <form action="/decks/upload-form" method="post" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label class="form-label">Nazwa zestawu:</label>
-                        <input type="text" name="deck_name" class="form-control" placeholder="np. Egzamin E.14" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Zaznacz pliki z pytaniami (możesz wybrać wiele):</label>
-                        <input type="file" name="files" class="form-control" multiple required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100">Stwórz zestaw z plików</button>
-                </form>
+    <h2>Twoje zestawy</h2>
+    <div class="deck-list">
+        {% for deck in decks %}
+        <div class="deck-card" id="deck-{{ deck.id }}">
+            <div class="deck-info">
+                <h3>{{ deck.title }}</h3>
+                <small>ID: {{ deck.id }}</small>
             </div>
+            <div class="deck-actions">
+                <a href="/preview/{{ deck.id }}" class="btn btn-preview">Podgląd</a>
 
+                <button onclick="deleteDeck({{ deck.id }})" class="btn btn-delete">Usuń</button>
+
+                <a href="/nauka/{{ deck.id }}" class="btn btn-start">Rozpocznij ▶</a>
+            </div>
         </div>
+        {% else %}
+        <p style="text-align:center; color: #777;">Brak zestawów. Wgraj coś powyżej!</p>
+        {% endfor %}
     </div>
-</div>
+
+    <script>
+        async function deleteDeck(deckId) {
+            if (!confirm("Czy na pewno chcesz usunąć ten zestaw?")) return;
+
+            try {
+                const response = await fetch(`/decks/${deckId}`, {
+                    method: 'DELETE',
+                });
+
+                if (response.ok) {
+                    // Usuwamy element z HTML bez przeładowania strony
+                    document.getElementById(`deck-${deckId}`).remove();
+                } else {
+                    alert("Wystąpił błąd podczas usuwania.");
+                }
+            } catch (error) {
+                console.error("Błąd:", error);
+                alert("Nie udało się połączyć z serwerem.");
+            }
+        }
+    </script>
 
 </body>
+
 </html>

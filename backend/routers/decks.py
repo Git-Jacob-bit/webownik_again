@@ -8,7 +8,8 @@ from database import get_session
 from models import Deck, Question, Answer, QuestionRead
 from parser import parse_txt_file
 
-# Tworzymy router z prefixem, żeby nie pisać wszędzie "/decks"
+# Tworzymy router z prefixem /decks
+# Wszystkie endpointy tutaj będą miały początek /decks
 router = APIRouter(prefix="/decks", tags=["Decks"])
 
 @router.post("/upload-form")
@@ -68,3 +69,28 @@ def get_deck_questions(deck_id: int, session: Session = Depends(get_session)):
     )
     questions = session.exec(statement).all()
     return questions
+
+@router.delete("/{deck_id}")
+def delete_deck(deck_id: int, session: Session = Depends(get_session)):
+    """Usuwa zestaw wraz z pytaniami i odpowiedziami (Ręczna kaskada)."""
+    deck = session.get(Deck, deck_id)
+    if not deck:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zestawu")
+    
+    # 1. Znajdź wszystkie pytania należące do tego zestawu
+    questions = session.exec(select(Question).where(Question.deck_id == deck_id)).all()
+    
+    for question in questions:
+        # 2. Dla każdego pytania znajdź i usuń jego odpowiedzi
+        answers = session.exec(select(Answer).where(Answer.question_id == question.id)).all()
+        for answer in answers:
+            session.delete(answer)
+        
+        # 3. Usuń pytanie
+        session.delete(question)
+            
+    # 4. Na końcu, gdy zestaw jest pusty, usuń go
+    session.delete(deck)
+    session.commit()
+    
+    return {"ok": True}
