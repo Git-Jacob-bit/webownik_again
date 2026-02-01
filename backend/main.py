@@ -53,6 +53,8 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Webownik API", lifespan=lifespan)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 # PODPINAMY ROUTERY
 app.include_router(auth.router)
 app.include_router(frontend.router)
