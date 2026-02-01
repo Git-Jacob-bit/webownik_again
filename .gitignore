@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# Docker & Database
+postgres_data/
+.docker/
+
+# Environment variables (Bezpieczeństwo!)
+.env
+.env.local
+
+# IDE (opcjonalnie, jeśli używasz VS Code lub PyCharm)
+.vscode/
+.idea/
+
+# Systemowe
+.DS_Store
+Thumbs.db
+
+# Frontend (na przyszłość)
+node_modules/
+.next/
+build/
+dist/
