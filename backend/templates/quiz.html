@@ -8,24 +8,16 @@
     <style>
         body { background-color: #f8f9fa; }
         .quiz-container { max-width: 600px; margin: 50px auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
-        
         .answer-btn { width: 100%; margin-bottom: 10px; text-align: left; padding: 15px; font-size: 1.1rem; border: 2px solid #dee2e6; transition: all 0.2s; background: white;}
         .answer-btn:hover:not(:disabled) { background-color: #e9ecef; border-color: #adb5bd; }
-        
-        /* STYL ZAZNACZENIA */
         .selected { border-color: #0d6efd !important; background-color: #cfe2ff !important; color: #084298; position: relative; }
         .selected::after { content: ' ✔'; float: right; font-weight: bold; }
-
-        /* WYNIKI */
         .result-correct { background-color: #d4edda !important; border-color: #28a745 !important; color: #155724; }
         .result-wrong { background-color: #f8d7da !important; border-color: #dc3545 !important; color: #721c24; text-decoration: line-through; }
         .result-missed { background-color: #fff3cd !important; border-color: #ffc107 !important; color: #856404; border-width: 3px !important; }
         .result-missed::after { content: ' (To też poprawne!)'; font-size: 0.8rem; opacity: 0.8; }
-        
         .hidden { display: none !important; }
         .action-btn { margin-top: 20px; font-weight: bold; height: 50px;}
-
-        /* Styl dla górnej belki */
         .quiz-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .progress-badge { font-size: 0.9rem; color: #6c757d; font-weight: bold; }
     </style>
@@ -40,21 +32,17 @@
 
 <div class="container">
     <div class="quiz-container">
-        
         <div class="quiz-header">
             <div>
                 <span class="badge bg-primary me-2">Quiz</span>
                 <span id="progress-text" class="progress-badge">Ładowanie...</span>
             </div>
-            <a href="/" class="btn btn-outline-danger btn-sm" title="Zakończ i zapisz postęp">
-                &times; Wyjście
-            </a>
+            <a href="/" class="btn btn-outline-danger btn-sm">&times; Wyjście</a>
         </div>
         
         <div id="start-screen" class="text-center mt-4">
             <h2 class="mb-3">Gotowy do nauki?</h2>
             <p class="lead text-muted">Zestaw: <span id="deck-title">...</span></p>
-            
             <div id="resume-section" class="hidden mb-4">
                 <div class="alert alert-info">Masz niedokończoną sesję!</div>
                 <button onclick="startQuiz(false)" class="btn btn-primary btn-lg w-100 mb-2">Kontynuuj naukę</button>
@@ -63,51 +51,44 @@
         </div>
 
         <div id="quiz-screen" class="hidden">
-            <h3 id="question-text" class="mb-4 mt-2">Treść pytania...</h3>
+            <h3 id="question-text" class="mb-4 mt-2">...</h3>
             <p class="text-muted small">Zaznacz wszystkie poprawne odpowiedzi:</p>
-            
             <div id="answers-area"></div>
-
             <div id="action-area">
-                <button id="confirm-btn" class="btn btn-primary w-100 btn-lg action-btn" disabled onclick="confirmSelection()">
-                    Zatwierdź odpowiedź
-                </button>
-                
-                <button id="next-btn" class="btn btn-secondary w-100 btn-lg action-btn hidden" onclick="loadNextQuestion()">
-                    Następne pytanie &rarr;
-                </button>
+                <button id="confirm-btn" class="btn btn-primary w-100 btn-lg action-btn" disabled onclick="confirmSelection()">Zatwierdź odpowiedź</button>
+                <button id="next-btn" class="btn btn-secondary w-100 btn-lg action-btn hidden" onclick="loadNextQuestion()">Następne pytanie &rarr;</button>
             </div>
-
             <p id="feedback-msg" class="text-center mt-3 text-muted hidden">...</p>
         </div>
 
         <div id="end-screen" class="hidden text-center mt-4">
             <h1 class="display-4 text-success">Gratulacje!</h1>
-            <p class="lead">Przerobiłeś cały materiał z tego zestawu.</p>
+            <p class="lead">Przerobiłeś cały materiał.</p>
             <hr>
             <a href="/" class="btn btn-primary btn-lg w-100 mb-3">Wróć do zestawów</a>
             <button onclick="location.reload()" class="btn btn-outline-secondary btn-lg w-100">Powtórz jeszcze raz</button>
         </div>
-
     </div>
 </div>
 
 <script>
+    const token = localStorage.getItem('token');
     const pathParts = window.location.pathname.split('/');
     const deckId = pathParts[pathParts.length - 1];
-
     let selectedAnswerIds = new Set();
 
-    async function init() {
-        const response = await fetch(`/quiz/status/${deckId}`);
-        const data = await response.json();
+    if (!token) window.location.href = '/login';
 
+    async function init() {
+        const response = await fetch(`/quiz/status/${deckId}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await response.json();
+        document.getElementById('deck-title').innerText = `Zestaw #${deckId}`;
         if (data.has_active_session) {
             document.getElementById('resume-section').classList.remove('hidden');
-            document.getElementById('deck-title').innerText = `Zestaw #${deckId}`;
-            document.getElementById('progress-text').innerText = "W toku";
+            document.getElementById('progress-text').innerText = "W toku (" + data.remaining + ")";
         } else {
-            document.getElementById('deck-title').innerText = `Zestaw #${deckId}`;
             document.getElementById('progress-text').innerText = "Nowa gra";
         }
     }
@@ -115,10 +96,12 @@
     async function startQuiz(forceNew) {
         const res = await fetch(`/quiz/start/${deckId}`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
             body: JSON.stringify({force_new: forceNew})
         });
-        
         if (res.ok) {
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('quiz-screen').classList.remove('hidden');
@@ -128,29 +111,23 @@
 
     async function loadNextQuestion() {
         selectedAnswerIds.clear();
-        
-        const confirmBtn = document.getElementById('confirm-btn');
-        const nextBtn = document.getElementById('next-btn');
-        
-        confirmBtn.classList.remove('hidden');
-        confirmBtn.disabled = true;
-        confirmBtn.innerText = "Zatwierdź odpowiedź";
-        
-        nextBtn.classList.add('hidden');
+        document.getElementById('confirm-btn').classList.remove('hidden');
+        document.getElementById('confirm-btn').disabled = true;
+        document.getElementById('next-btn').classList.add('hidden');
         document.getElementById('feedback-msg').classList.add('hidden');
 
-        const res = await fetch(`/quiz/next/${deckId}`);
+        const res = await fetch(`/quiz/next/${deckId}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
         const data = await res.json();
 
         if (data.finished) {
             showEndScreen();
-            document.getElementById('progress-text').innerText = "Koniec!";
             return;
         }
 
-        document.getElementById('progress-text').innerText = `W kolejce: ${data.remaining}`;
+        document.getElementById('progress-text').innerText = `Zostało: ${data.remaining}`;
         document.getElementById('question-text').innerText = data.question.content;
-        
         const answersArea = document.getElementById('answers-area');
         answersArea.innerHTML = ''; 
 
@@ -164,9 +141,52 @@
         });
     }
 
+    async function confirmSelection() {
+        const res = await fetch(`/quiz/answer/${deckId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({answer_ids: Array.from(selectedAnswerIds)})
+        });
+        const result = await res.json();
+        const correctIds = new Set(result.correct_ids);
+
+        document.querySelectorAll('.answer-btn').forEach(btn => {
+            const btnId = parseInt(btn.dataset.id);
+            const isActuallyCorrect = correctIds.has(btnId);
+            const wasSelected = selectedAnswerIds.has(btnId);
+
+            btn.disabled = true;
+            btn.classList.remove('selected'); 
+            if (wasSelected && isActuallyCorrect) btn.classList.add('result-correct');
+            else if (wasSelected && !isActuallyCorrect) btn.classList.add('result-wrong');
+            else if (!wasSelected && isActuallyCorrect) btn.classList.add('result-missed');
+        });
+
+        const feedback = document.getElementById('feedback-msg');
+        feedback.classList.remove('hidden');
+        feedback.innerText = result.is_correct ? "Dobrze!" : "Błąd, powtórzymy to.";
+        feedback.className = `text-center mt-3 fw-bold ${result.is_correct ? 'text-success' : 'text-danger'}`;
+
+        document.getElementById('confirm-btn').classList.add('hidden');
+        const nextBtn = document.getElementById('next-btn');
+        nextBtn.classList.remove('hidden');
+
+        if (result.finished) {
+            nextBtn.innerHTML = "Zakończ i idź na piwo! 🍺";
+            nextBtn.classList.replace('btn-secondary', 'btn-success'); // Zmieniamy kolor na zielony
+            nextBtn.onclick = () => showEndScreen(); // Od razu pokazujemy gratulacje
+        } else {
+            nextBtn.innerHTML = "Następne pytanie &rarr;";
+            nextBtn.onclick = () => loadNextQuestion(); // Normalne ładowanie pytania
+        }
+    }
+    
+
     function toggleAnswer(answerId, btn) {
         if (!document.getElementById('next-btn').classList.contains('hidden')) return;
-
         if (selectedAnswerIds.has(answerId)) {
             selectedAnswerIds.delete(answerId);
             btn.classList.remove('selected');
@@ -177,54 +197,6 @@
         document.getElementById('confirm-btn').disabled = (selectedAnswerIds.size === 0);
     }
 
-    async function confirmSelection() {
-        if (selectedAnswerIds.size === 0) return;
-
-        const confirmBtn = document.getElementById('confirm-btn');
-        confirmBtn.innerText = "Sprawdzanie...";
-        confirmBtn.disabled = true;
-
-        document.querySelectorAll('.answer-btn').forEach(b => b.disabled = true);
-
-        const res = await fetch(`/quiz/answer/${deckId}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({answer_ids: Array.from(selectedAnswerIds)})
-        });
-        
-        const result = await res.json();
-        const correctIds = new Set(result.correct_ids);
-
-        document.querySelectorAll('.answer-btn').forEach(btn => {
-            const btnId = parseInt(btn.dataset.id);
-            const wasSelected = selectedAnswerIds.has(btnId);
-            const isActuallyCorrect = correctIds.has(btnId);
-
-            btn.classList.remove('selected'); 
-
-            if (wasSelected && isActuallyCorrect) {
-                btn.classList.add('result-correct');
-            } else if (wasSelected && !isActuallyCorrect) {
-                btn.classList.add('result-wrong');
-            } else if (!wasSelected && isActuallyCorrect) {
-                btn.classList.add('result-missed');
-            }
-        });
-
-        const feedback = document.getElementById('feedback-msg');
-        feedback.classList.remove('hidden');
-        if (result.is_correct) {
-            feedback.innerText = "Świetnie! Pytanie zaliczone.";
-            feedback.className = "text-center mt-3 text-success fw-bold";
-        } else {
-            feedback.innerText = "Niestety, błąd. Pytanie wróci do kolejki.";
-            feedback.className = "text-center mt-3 text-danger fw-bold";
-        }
-
-        confirmBtn.classList.add('hidden');
-        document.getElementById('next-btn').classList.remove('hidden');
-    }
-
     function showEndScreen() {
         document.getElementById('quiz-screen').classList.add('hidden');
         document.getElementById('end-screen').classList.remove('hidden');
@@ -232,6 +204,5 @@
 
     init();
 </script>
-
 </body>
 </html>

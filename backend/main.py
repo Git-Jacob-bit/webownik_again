@@ -4,11 +4,12 @@ from fastapi import FastAPI
 from sqlmodel import Session, select
 from sqlalchemy.exc import OperationalError
 
+from security import get_password_hash
 from database import init_db, engine
 from models import User
 
 # IMPORTUJEMY ROUTERY
-from routers import frontend, decks, quiz
+from routers import auth, frontend, decks, quiz
 
 def wait_for_db():
     retries = 5
@@ -26,12 +27,22 @@ def wait_for_db():
 
 def create_test_user():
     with Session(engine) as session:
-        user = session.exec(select(User).where(User.id == 1)).first()
+        # Szukamy usera ID=1 (albo po emailu)
+        user = session.exec(select(User).where(User.email == "test@test.pl")).first()
         if not user:
-            print("--- Tworzę testowego usera ---")
-            test_user = User(email="test@test.pl", hashed_password="xxx", is_active=True)
+            print("--- Tworzę testowego usera (admina) ---")
+            
+            # Tworzymy prawdziwy hash dla hasła "admin123"
+            secure_password = get_password_hash("admin123")
+            
+            test_user = User(
+                email="test@test.pl", 
+                hashed_password=secure_password, # Tu wstawiamy hash, nie zwykły tekst!
+                is_active=True
+            )
             session.add(test_user)
             session.commit()
+            print("--- Gotowe! Login: test@test.pl, Hasło: admin123 ---")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +54,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Webownik API", lifespan=lifespan)
 
 # PODPINAMY ROUTERY
+app.include_router(auth.router)
 app.include_router(frontend.router)
 app.include_router(decks.router)
 app.include_router(quiz.router)

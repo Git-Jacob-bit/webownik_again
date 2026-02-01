@@ -3,6 +3,8 @@ uvicorn[standard]
 sqlmodel
 psycopg2-binary
 python-multipart
-passlib[bcrypt]
+passlib
+bcrypt==3.2.2
 python-jose[cryptography]
 jinja2
+

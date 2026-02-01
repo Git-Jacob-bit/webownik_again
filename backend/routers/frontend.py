@@ -1,48 +1,48 @@
-from fastapi import APIRouter, Request, Depends, HTTPException
+from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
-
 from database import get_session
 from models import Deck, Question
 
-# Tworzymy router
 router = APIRouter()
-
-# Konfiguracja szablonów (musimy podać ścieżkę względem głównego folderu backendu)
 templates = Jinja2Templates(directory="templates")
 
-@router.get("/", response_class=HTMLResponse)
-def read_root(request: Request, session: Session = Depends(get_session)):
-    """Strona główna - wyświetla listę zestawów."""
-    decks = session.exec(select(Deck)).all()
-    return templates.TemplateResponse(
-        "index.html", 
-        {"request": request, "decks": decks}
-    )
+@router.get("/")
+def index(request: Request):
+    # Po prostu zwracamy HTML. JavaScript w środku zajmie się resztą.
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@router.get("/nauka/{deck_id}", response_class=HTMLResponse)
-def study_view(deck_id: int, request: Request, session: Session = Depends(get_session)):
-    """Widok HTML (frontend) dla quizu."""
+from fastapi import APIRouter, Request
+from fastapi.templating import Jinja2Templates
+
+router = APIRouter()
+templates = Jinja2Templates(directory="templates")
+
+@router.get("/")
+def index(request: Request):
+    """Strona główna - Dashboard użytkownika."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+@router.get("/login")
+@router.get("/register")  # <-- Obie ścieżki obsługują ten sam plik
+def auth_page(request: Request):
+    """Serwuje połączony widok logowania i rejestracji."""
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@router.get("/quiz/{deck_id}")
+def quiz_page(request: Request, deck_id: int):
+    """To serwuje sam PLIK HTML, a nie dane JSON."""
+    return templates.TemplateResponse("quiz.html", {"request": request})
+
+@router.get("/preview/{deck_id}")
+def preview_page(request: Request, deck_id: int, session: Session = Depends(get_session)):
+    # 1. Pobierz zestaw
     deck = session.get(Deck, deck_id)
     if not deck:
-        raise HTTPException(status_code=404, detail="Nie znaleziono zestawu")
-        
-    return templates.TemplateResponse(
-        "quiz.html", 
-        {"request": request, "deck_id": deck_id}
-    )
+        return templates.TemplateResponse("404.html", {"request": request}, status_code=404)
 
-@router.get("/preview/{deck_id}", response_class=HTMLResponse)
-def preview_deck(deck_id: int, request: Request, session: Session = Depends(get_session)):
-    """Wyświetla wszystkie pytania z danego zestawu."""
-    # Pobieramy deck wraz z pytaniami
-    deck = session.get(Deck, deck_id)
-    if not deck:
-        raise HTTPException(status_code=404, detail="Nie znaleziono zestawu")
-    
-    # Pobieramy pytania oddzielnym zapytaniem dla pewności (z odpowiedziami)
+    # 2. Pobierz pytania wraz z odpowiedziami (używamy selectinload dla wydajności)
     statement = (
         select(Question)
         .where(Question.deck_id == deck_id)
@@ -50,14 +50,9 @@ def preview_deck(deck_id: int, request: Request, session: Session = Depends(get_
     )
     questions = session.exec(statement).all()
 
-    return templates.TemplateResponse(
-        "preview.html", 
-        {"request": request, "deck": deck, "questions": questions}
-    )
-
-# ... (poprzednie importy)
-
-@router.get("/quiz-ui/{deck_id}")
-def quiz_page(deck_id: int):
-    """Zwraca stronę HTML quizu."""
-    return FileResponse("templates/quiz.html")
+    # 3. Wyślij wszystko do szablonu
+    return templates.TemplateResponse("preview.html", {
+        "request": request, 
+        "deck": deck, 
+        "questions": questions
+    })

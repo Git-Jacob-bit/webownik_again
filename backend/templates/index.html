@@ -1,189 +1,153 @@
 <!DOCTYPE html>
 <html lang="pl">
-
 <head>
     <meta charset="UTF-8">
     <title>Webownik - Moje Zestawy</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f4f4f9;
-        }
-
-        h1 {
-            text-align: center;
-            color: #333;
-        }
-
-        /* Styl formularza wgrywania */
-        .upload-section {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            margin-bottom: 30px;
-        }
-
-        .upload-section h2 {
-            margin-top: 0;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-
-        input[type="text"],
-        input[type="file"] {
-            width: 100%;
-            padding: 8px;
-            box-sizing: border-box;
-        }
-
-        button.upload-btn {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 16px;
-        }
-
-        button.upload-btn:hover {
-            background-color: #45a049;
-        }
-
-        /* Styl listy zestawów */
-        .deck-list {
-            display: grid;
-            gap: 15px;
-        }
-
-        .deck-card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .deck-info h3 {
-            margin: 0 0 5px 0;
-            color: #2c3e50;
-        }
-
-        .deck-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        /* Przyciski akcji */
-        .btn {
-            text-decoration: none;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            border: none;
-        }
-
-        .btn-start {
-            background-color: #2196F3;
-            color: white;
-        }
-
-        .btn-preview {
-            background-color: #ff9800;
-            color: white;
-        }
-
-        .btn-delete {
-            background-color: #f44336;
-            color: white;
-        }
-
-        .btn:hover {
-            opacity: 0.9;
-        }
-    </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
+<body class="bg-light">
 
-<body>
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Twoje Zestawy 📚</h1>
+        <button onclick="logout()" class="btn btn-outline-danger">Wyloguj</button>
+    </div>
 
-    <h1>Webownik</h1>
-
-    <div class="upload-section">
-        <h2>Dodaj nowy zestaw</h2>
-        <form action="/decks/upload-form" method="post" enctype="multipart/form-data">
-            <div class="form-group">
-                <label for="deck_name">Nazwa zestawu:</label>
-                <input type="text" id="deck_name" name="deck_name" required
-                    placeholder="np. Systemy Operacyjne - Kolokwium 1">
+    <div class="card p-4 mb-4 shadow-sm">
+        <h5>Dodaj nowy zestaw</h5>
+        <form id="upload-form" onsubmit="handleUpload(event)">
+            <div class="mb-3">
+                <input type="text" name="deck_name" class="form-control" placeholder="Nazwa zestawu (np. Anatomia)" required>
             </div>
-            <div class="form-group">
-                <label for="files">Wybierz pliki .txt:</label>
-                <input type="file" id="files" name="files" multiple required accept=".txt">
+            <div class="mb-3">
+                <input type="file" name="files" multiple class="form-control" required>
             </div>
-            <button type="submit" class="upload-btn">Wgraj zestaw</button>
+            <button type="submit" class="btn btn-primary">Wgraj pliki i stwórz zestaw</button>
         </form>
     </div>
 
-    <hr>
-
-    <h2>Twoje zestawy</h2>
-    <div class="deck-list">
-        {% for deck in decks %}
-        <div class="deck-card" id="deck-{{ deck.id }}">
-            <div class="deck-info">
-                <h3>{{ deck.title }}</h3>
-                <small>ID: {{ deck.id }}</small>
-            </div>
-            <div class="deck-actions">
-                <a href="/preview/{{ deck.id }}" class="btn btn-preview">Podgląd</a>
-
-                <button onclick="deleteDeck({{ deck.id }})" class="btn btn-delete">Usuń</button>
-
-                <a href="/nauka/{{ deck.id }}" class="btn btn-start">Rozpocznij ▶</a>
-            </div>
-        </div>
-        {% else %}
-        <p style="text-align:center; color: #777;">Brak zestawów. Wgraj coś powyżej!</p>
-        {% endfor %}
+    <div id="decks-container" class="row">
+        <p class="text-center text-muted">Ładowanie Twoich zestawów...</p>
     </div>
+</div>
 
-    <script>
-        async function deleteDeck(deckId) {
-            if (!confirm("Czy na pewno chcesz usunąć ten zestaw?")) return;
+<script>
+    const token = localStorage.getItem('token');
 
-            try {
-                const response = await fetch(`/decks/${deckId}`, {
-                    method: 'DELETE',
-                });
+    // Ochrona: Jeśli nie masz tokena, wracasz do logowania
+    if (!token) {
+        window.location.href = '/login';
+    }
 
-                if (response.ok) {
-                    // Usuwamy element z HTML bez przeładowania strony
-                    document.getElementById(`deck-${deckId}`).remove();
-                } else {
-                    alert("Wystąpił błąd podczas usuwania.");
+    // 1. Pobieranie zestawów
+    async function loadDecks() {
+        try {
+            const response = await fetch('/decks/mine', {
+                headers: { 
+                    'Authorization': 'Bearer ' + token 
                 }
-            } catch (error) {
-                console.error("Błąd:", error);
-                alert("Nie udało się połączyć z serwerem.");
+            });
+
+            if (response.status === 401) { logout(); return; }
+
+            const decks = await response.json();
+            const container = document.getElementById('decks-container');
+            container.innerHTML = '';
+
+            if (decks.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center"><p class="text-muted">Nie masz jeszcze żadnych zestawów. Wgraj pliki powyżej!</p></div>';
+                return;
             }
+
+            decks.forEach(deck => {
+                const html = `
+                    <div class="col-md-4 mb-3" id="deck-card-${deck.id}">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body">
+                                <h5 class="card-title">${deck.title}</h5>
+                                <p class="card-text text-muted small">ID: ${deck.id}</p>
+                                <div class="d-flex justify-content-between mt-3">
+                                    <button onclick="deleteDeck(${deck.id})" class="btn btn-sm btn-outline-danger">Usuń</button>
+                                    <div>
+                                        <a href="/preview/${deck.id}" class="btn btn-sm btn-outline-secondary">Podgląd</a>
+                                        <a href="/quiz/${deck.id}" class="btn btn-sm btn-primary">Ucz się</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += html;
+            });
+        } catch (error) {
+            console.error("Błąd ładowania:", error);
         }
-    </script>
+    }
 
+    // 2. Obsługa Uploadu
+    async function handleUpload(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        
+        try {
+            const response = await fetch('/decks/upload-form', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                alert('Zestaw został utworzony pomyślnie!');
+                form.reset();
+                loadDecks(); // Odśwież listę
+            } else {
+                const err = await response.json();
+                alert('Błąd: ' + (err.detail || 'Nie udało się wgrać plików.'));
+            }
+        } catch (error) {
+            alert('Wystąpił błąd połączenia.');
+        }
+    }
+
+    // 3. USUWANIE ZESTAWU (Poprawione)
+    async function deleteDeck(id) {
+        if(!confirm("Czy na pewno chcesz usunąć ten zestaw wraz ze wszystkimi pytaniami?")) return;
+        
+        try {
+            const response = await fetch(`/decks/${id}`, {
+                method: 'DELETE',
+                headers: { 
+                    'Authorization': 'Bearer ' + token // Kluczowe dla zabezpieczonego endpointu
+                }
+            });
+
+            if (response.ok) {
+                // Usuwamy element z widoku bez przeładowania całej strony
+                const card = document.getElementById(`deck-card-${id}`);
+                if (card) card.remove();
+                
+                // Opcjonalnie przeładuj listę, jeśli chcesz sprawdzić czy pusta
+                loadDecks();
+            } else {
+                const err = await response.json();
+                alert('Błąd usuwania: ' + (err.detail || 'Brak uprawnień.'));
+            }
+        } catch (error) {
+            console.error("Błąd podczas usuwania:", error);
+            alert('Wystąpił błąd podczas próby usunięcia zestawu.');
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+    }
+
+    // Inicjalizacja przy starcie strony
+    loadDecks();
+</script>
 </body>
-
 </html>

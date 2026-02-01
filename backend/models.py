@@ -11,20 +11,23 @@ class User(SQLModel, table=True):
     
     # Relacje
     decks: List["Deck"] = Relationship(back_populates="user")
+    sessions: List["QuizSession"] = Relationship(back_populates="user") # <--- NOWE
 
 class Deck(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     description: Optional[str] = None
+    # Każdy zestaw musi mieć właściciela (nawet jeśli to admin o ID=1)
     user_id: int = Field(foreign_key="user.id")
     
     # Relacje
     user: Optional[User] = Relationship(back_populates="decks")
     questions: List["Question"] = Relationship(back_populates="deck")
+    sessions: List["QuizSession"] = Relationship(back_populates="deck") # <--- NOWE
 
 class Question(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    content: str  # Treść pytania
+    content: str
     deck_id: int = Field(foreign_key="deck.id")
     
     # Relacje
@@ -40,31 +43,31 @@ class Answer(SQLModel, table=True):
     # Relacje
     question: Optional[Question] = Relationship(back_populates="answers")
 
-# --- Dodaj to na samym dole pliku models.py ---
+# --- Schematy do odczytu (Pydantic models) ---
+# Przydatne przy zwracaniu danych do API
 
 class AnswerRead(SQLModel):
-    """Wersja odpowiedzi bezpieczna dla JSON (bez linku zwrotnego do pytania)"""
     id: int
     content: str
     is_correct: bool
 
 class QuestionRead(SQLModel):
-    """Wersja pytania zawierająca listę bezpiecznych odpowiedzi"""
     id: int
     content: str
     answers: List[AnswerRead] = []
 
-# ... (zachowaj dotychczasowe importy i klasy User, Deck, Question, Answer)
-
-# --- NOWA TABELA: SESJA NAUKI ---
+# --- SESJA NAUKI (Stan gry) ---
 class QuizSession(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True)
-    deck_id: int = Field(index=True)
+    id: Optional[int] = Field(default=None, primary_key=True)
     
-    # Przechowujemy kolejkę jako string, np. "1,5,2,1,5"
-    # To najprostszy sposób w SQLite na trzymanie listy intów
+    # Klucze obce (Foreign Keys) - to łączy tabele w bazie
+    user_id: int = Field(foreign_key="user.id")
+    deck_id: int = Field(foreign_key="deck.id")
+    
+    # Relacje obiektowe - to pozwala w kodzie pisać session.user.email
+    user: User = Relationship(back_populates="sessions")
+    deck: Deck = Relationship(back_populates="sessions")
+    
+    # Kolejka pytań "1,5,2"
     queue_str: str = "" 
-    
-    # Czy sesja jest aktywna
     is_active: bool = True
