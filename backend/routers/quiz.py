@@ -3,6 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
+from datetime import datetime
 
 from database import get_session
 from models import QuizSession, Question, Answer, User
@@ -19,6 +20,17 @@ def queue_to_list(queue_str: str) -> List[int]:
 def list_to_queue(queue_list: List[int]) -> str:
     return ",".join(str(x) for x in queue_list)
 
+def update_session_time(session: QuizSession):
+    """Oblicza czas od ostatniej aktywności i dodaje do licznika, jeśli nie było pauzy."""
+    if not session.is_paused:
+        now = datetime.utcnow()
+        # Obliczamy różnicę w sekundach
+        if session.last_activity:
+            delta = (now - session.last_activity).total_seconds()
+            session.total_time_seconds += int(delta)
+        # Aktualizujemy znacznik czasu na "teraz"
+        session.last_activity = now
+
 # --- STATUS SESJI ---
 @router.get("/status/{deck_id}")
 def check_quiz_status(
@@ -34,9 +46,13 @@ def check_quiz_status(
     quiz_session = session.exec(statement).first()
     
     if quiz_session and len(queue_to_list(quiz_session.queue_str)) > 0:
-        return {"has_active_session": True, "remaining": len(queue_to_list(quiz_session.queue_str))}
+        return {
+            "has_active_session": True, 
+            "remaining": len(queue_to_list(quiz_session.queue_str)),
+            "time_spent": quiz_session.total_time_seconds
+        }
     
-    return {"has_active_session": False, "remaining": 0}
+    return {"has_active_session": False, "remaining": 0, "time_spent": 0}
 
 # --- START NOWEJ SESJI ---
 @router.post("/start/{deck_id}")
@@ -54,9 +70,20 @@ def start_quiz(
     )
     existing_session = session.exec(statement).first()
 
+    # KONTYNUACJA SESJI
     if existing_session and not force_new:
-        return {"message": "Session continued", "session_id": existing_session.id}
+        # Wznawiamy licznik czasu (resetujemy last_activity, żeby nie doliczył czasu przerwy)
+        existing_session.last_activity = datetime.utcnow()
+        existing_session.is_paused = False
+        session.add(existing_session)
+        session.commit()
+        return {
+            "message": "Session continued", 
+            "session_id": existing_session.id,
+            "time_spent": existing_session.total_time_seconds
+        }
 
+    # USUWANIE STAREJ SESJI
     if existing_session and force_new:
         session.delete(existing_session)
         session.commit()
@@ -70,16 +97,71 @@ def start_quiz(
     queue = questions * 2
     random.shuffle(queue)
 
+    # NOWA SESJA (startuje licznik)
     new_session = QuizSession(
         user_id=current_user.id,
         deck_id=deck_id,
         queue_str=list_to_queue(queue),
-        is_active=True
+        is_active=True,
+        total_time_seconds=0,            # Start od 0
+        last_activity=datetime.utcnow(), # Czas startu
+        is_paused=False
     )
     session.add(new_session)
     session.commit()
     
     return {"message": "New session started", "session_id": new_session.id, "total_questions": len(queue)}
+
+# --- PAUZA ---
+@router.post("/pause/{deck_id}")
+def pause_quiz(
+    deck_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    db_session = session.exec(select(QuizSession).where(
+        QuizSession.user_id == current_user.id,
+        QuizSession.deck_id == deck_id,
+        QuizSession.is_active == True
+    )).first()
+
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Brak sesji")
+
+    # Zlicz czas do momentu kliknięcia pauzy
+    update_session_time(db_session)
+    
+    # Ustaw flagę pauzy
+    db_session.is_paused = True
+    session.add(db_session)
+    session.commit()
+    
+    return {"status": "paused", "total_time": db_session.total_time_seconds}
+
+# --- WZNOWIENIE ---
+@router.post("/resume/{deck_id}")
+def resume_quiz(
+    deck_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    db_session = session.exec(select(QuizSession).where(
+        QuizSession.user_id == current_user.id,
+        QuizSession.deck_id == deck_id,
+        QuizSession.is_active == True
+    )).first()
+
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Brak sesji")
+
+    # Resetujemy znacznik czasu na "teraz", żeby nie doliczył czasu bycia na pauzie
+    db_session.last_activity = datetime.utcnow()
+    db_session.is_paused = False
+    
+    session.add(db_session)
+    session.commit()
+    
+    return {"status": "resumed"}
 
 # --- POBIERZ NASTĘPNE PYTANIE ---
 @router.get("/next/{deck_id}")
@@ -104,8 +186,13 @@ def get_next_question(
 
     next_q_id = queue[0]
     
+    # Pobieramy pytanie wraz z odpowiedziami
     statement = select(Question).where(Question.id == next_q_id).options(selectinload(Question.answers))
     question = session.exec(statement).first()
+
+    # MIESZANIE ODPOWIEDZI (FRONTEND DOSTAJE LOSOWO)
+    answers_list = [{"id": a.id, "content": a.content} for a in question.answers]
+    random.shuffle(answers_list)
 
     return {
         "finished": False,
@@ -113,7 +200,7 @@ def get_next_question(
         "question": {
             "id": question.id,
             "content": question.content,
-            "answers": [{"id": a.id, "content": a.content} for a in question.answers]
+            "answers": answers_list
         }
     }
 
@@ -133,6 +220,10 @@ def submit_answer(
     
     if not db_session:
         raise HTTPException(status_code=404, detail="Sesja nie istnieje")
+
+    # --- AKTUALIZACJA CZASU ---
+    update_session_time(db_session)
+    # --------------------------
 
     queue = queue_to_list(db_session.queue_str)
     if not queue:
@@ -164,9 +255,12 @@ def submit_answer(
     is_finished = len(queue) == 0
 
     if is_finished:
+        # Tu możesz zapisać ostateczny czas do innej tabeli ze statystykami
+        final_time = db_session.total_time_seconds
         session.delete(db_session)
     else:
         db_session.queue_str = list_to_queue(queue)
+        final_time = db_session.total_time_seconds
         session.add(db_session)
     
     session.commit()
@@ -175,5 +269,6 @@ def submit_answer(
         "is_correct": is_fully_correct,
         "remaining": len(queue),
         "correct_ids": list(correct_ids_set),
-        "finished": is_finished
+        "finished": is_finished,
+        "time_spent": final_time  # Zwracamy czas, żeby frontend mógł go wyświetlić
     }

@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f8f9fa; }
-        .quiz-container { max-width: 600px; margin: 50px auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
+        .quiz-container { max-width: 600px; margin: 50px auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; overflow: hidden; }
         .answer-btn { width: 100%; margin-bottom: 10px; text-align: left; padding: 15px; font-size: 1.1rem; border: 2px solid #dee2e6; transition: all 0.2s; background: white;}
         .answer-btn:hover:not(:disabled) { background-color: #e9ecef; border-color: #adb5bd; }
         .selected { border-color: #0d6efd !important; background-color: #cfe2ff !important; color: #084298; position: relative; }
@@ -21,6 +21,20 @@
         .action-btn { margin-top: 20px; font-weight: bold; height: 50px;}
         .quiz-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .progress-badge { font-size: 0.9rem; color: #6c757d; font-weight: bold; }
+        
+        /* Stylizacja Zegara i Pauzy */
+        .timer-box { font-family: 'Courier New', monospace; font-weight: bold; font-size: 1.2rem; color: #0d6efd; display: flex; align-items: center; gap: 10px; }
+        .pause-btn { cursor: pointer; border: none; background: none; color: #ffc107; font-size: 1.2rem; transition: transform 0.2s; }
+        .pause-btn:hover { transform: scale(1.2); color: #e0a800; }
+        
+        /* Overlay Pauzy */
+        #pause-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 100;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            backdrop-filter: blur(5px);
+        }
     </style>
 </head>
 <body>
@@ -33,11 +47,18 @@
 
 <div class="container">
     <div class="quiz-container">
+        
         <div class="quiz-header">
             <div>
                 <span class="badge bg-primary me-2">Quiz</span>
                 <span id="progress-text" class="progress-badge">Ładowanie...</span>
             </div>
+            
+            <div class="timer-box hidden" id="timer-container">
+                <span id="timer">00:00</span>
+                <button class="pause-btn" onclick="togglePause()" title="Pauza">⏸</button>
+            </div>
+
             <a href="/" class="btn btn-outline-danger btn-sm">&times; Wyjście</a>
         </div>
         
@@ -49,6 +70,12 @@
                 <button onclick="startQuiz(false)" class="btn btn-primary btn-lg w-100 mb-2">Kontynuuj naukę</button>
             </div>
             <button onclick="startQuiz(true)" class="btn btn-outline-dark btn-lg w-100">Rozpocznij od nowa</button>
+        </div>
+
+        <div id="pause-overlay" class="hidden">
+            <h2 class="text-muted mb-3">Pauza ☕</h2>
+            <p>Czas został zatrzymany.</p>
+            <button class="btn btn-primary btn-lg" onclick="togglePause()">▶ Wznów naukę</button>
         </div>
 
         <div id="quiz-screen" class="hidden">
@@ -65,6 +92,7 @@
         <div id="end-screen" class="hidden text-center mt-4">
             <h1 class="display-4 text-success">Gratulacje!</h1>
             <p class="lead">Przerobiłeś cały materiał.</p>
+            <p>Twój czas nauki: <strong id="final-time">00:00</strong></p>
             <hr>
             <a href="/" class="btn btn-primary btn-lg w-100 mb-3">Wróć do zestawów</a>
             <button onclick="location.reload()" class="btn btn-outline-secondary btn-lg w-100">Powtórz jeszcze raz</button>
@@ -78,15 +106,67 @@
     const deckId = pathParts[pathParts.length - 1];
     let selectedAnswerIds = new Set();
     
+    // Zmienne zegara
+    let totalSeconds = 0;
+    let timerInterval;
+    let isPaused = false;
+
+    // --- LOGIKA ZEGARA ---
+    function startTimer() {
+        stopTimer(); // Czyścimy stary interwał
+        timerInterval = setInterval(() => {
+            if (!isPaused) {
+                totalSeconds++;
+                updateTimerDisplay();
+            }
+        }, 1000);
+    }
+
+    function stopTimer() {
+        clearInterval(timerInterval);
+    }
+
+    function updateTimerDisplay() {
+        let m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+        let s = (totalSeconds % 60).toString().padStart(2, '0');
+        document.getElementById('timer').innerText = `${m}:${s}`;
+        document.getElementById('final-time').innerText = `${m}:${s}`;
+    }
+
+    async function togglePause() {
+        const overlay = document.getElementById('pause-overlay');
+        
+        if (!isPaused) {
+            // Włączamy pauzę
+            await fetch(`/quiz/pause/${deckId}`, { method: 'POST', headers: {'Authorization': `Bearer ${token}`} });
+            isPaused = true;
+            stopTimer();
+            overlay.classList.remove('hidden');
+        } else {
+            // Wznawiamy
+            await fetch(`/quiz/resume/${deckId}`, { method: 'POST', headers: {'Authorization': `Bearer ${token}`} });
+            isPaused = false;
+            startTimer();
+            overlay.classList.add('hidden');
+        }
+    }
+
+    // --- LOGIKA QUIZU ---
+
     async function init() {
         const response = await fetch(`/quiz/status/${deckId}`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const data = await response.json();
+        
         document.getElementById('deck-title').innerText = `Zestaw #${deckId}`;
+        
         if (data.has_active_session) {
             document.getElementById('resume-section').classList.remove('hidden');
             document.getElementById('progress-text').innerText = "W toku (" + data.remaining + ")";
+            // Wczytaj czas z bazy
+            totalSeconds = data.time_spent || 0;
+            updateTimerDisplay();
         } else {
             document.getElementById('progress-text').innerText = "Nowa gra";
         }
@@ -101,9 +181,19 @@
             },
             body: JSON.stringify({force_new: forceNew})
         });
+        
+        const data = await res.json(); // Pobieramy odpowiedź
+
         if (res.ok) {
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('quiz-screen').classList.remove('hidden');
+            document.getElementById('timer-container').classList.remove('hidden'); // Pokaż zegar
+            
+            // Ustaw czas początkowy (dla kontynuacji lub nowej gry)
+            totalSeconds = data.time_spent || 0;
+            updateTimerDisplay();
+            startTimer(); // Start zegara
+
             loadNextQuestion();
         }
     }
@@ -141,6 +231,8 @@
     }
 
     async function confirmSelection() {
+        stopTimer(); // Zatrzymujemy wizualnie na moment sprawdzania
+
         const res = await fetch(`/quiz/answer/${deckId}`, {
             method: 'POST',
             headers: {
@@ -150,6 +242,14 @@
             body: JSON.stringify({answer_ids: Array.from(selectedAnswerIds)})
         });
         const result = await res.json();
+        
+        // Synchronizacja czasu z serwerem
+        if(result.time_spent !== undefined) {
+            totalSeconds = result.time_spent;
+            updateTimerDisplay();
+        }
+        startTimer(); // Wznawiamy zegar
+
         const correctIds = new Set(result.correct_ids);
 
         document.querySelectorAll('.answer-btn').forEach(btn => {
@@ -175,15 +275,14 @@
 
         if (result.finished) {
             nextBtn.innerHTML = "Zakończ i idź na piwo! 🍺";
-            nextBtn.classList.replace('btn-secondary', 'btn-success'); // Zmieniamy kolor na zielony
-            nextBtn.onclick = () => showEndScreen(); // Od razu pokazujemy gratulacje
+            nextBtn.classList.replace('btn-secondary', 'btn-success'); 
+            nextBtn.onclick = () => showEndScreen(); 
         } else {
             nextBtn.innerHTML = "Następne pytanie &rarr;";
-            nextBtn.onclick = () => loadNextQuestion(); // Normalne ładowanie pytania
+            nextBtn.onclick = () => loadNextQuestion();
         }
     }
     
-
     function toggleAnswer(answerId, btn) {
         if (!document.getElementById('next-btn').classList.contains('hidden')) return;
         if (selectedAnswerIds.has(answerId)) {
@@ -197,7 +296,9 @@
     }
 
     function showEndScreen() {
+        stopTimer(); // Zatrzymaj zegar ostatecznie
         document.getElementById('quiz-screen').classList.add('hidden');
+        document.getElementById('timer-container').classList.add('hidden'); // Ukryj mały zegar
         document.getElementById('end-screen').classList.remove('hidden');
     }
 

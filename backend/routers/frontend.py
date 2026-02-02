@@ -2,6 +2,7 @@ from fastapi import APIRouter, Request, Depends
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
+from fastapi.responses import HTMLResponse  # <--- DODAJ TĘ LINIĘ
 
 from database import get_session
 from models import Deck, Question
@@ -51,3 +52,8 @@ def preview_page(request: Request, deck_id: int, session: Session = Depends(get_
         "deck": deck, 
         "questions": questions
     })
+
+# Dodaj to do routera obsługującego strony (frontend)
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    return templates.TemplateResponse("settings.html", {"request": request})

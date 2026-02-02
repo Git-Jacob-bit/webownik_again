@@ -1,5 +1,6 @@
 from typing import List, Optional
 from sqlmodel import Field, SQLModel, Relationship
+from datetime import datetime
 
 # --- UŻYTKOWNIK ---
 class User(SQLModel, table=True):
@@ -57,3 +58,8 @@ class QuizSession(SQLModel, table=True):
     # Kolejka pytań jako string "1,5,2"
     queue_str: str = "" 
     is_active: bool = True
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    total_time_seconds: int = Field(default=0)  # Ile czasu już upłynęło
+    last_activity: datetime = Field(default_factory=datetime.utcnow) # Kiedy ostatnio coś kliknął
+    is_paused: bool = Field(default=False)      # Czy zastopował czas

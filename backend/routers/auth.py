@@ -1,5 +1,6 @@
 from datetime import timedelta
 from typing import Annotated
+from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -9,6 +10,7 @@ from jose import JWTError, jwt
 from database import get_session
 from models import User
 from security import verify_password, create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
+from schemas import UserCreate
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
@@ -36,16 +38,21 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], sessio
 
 # --- REJESTRACJA ---
 @router.post("/register")
-def register_user(user_data: User, session: Session = Depends(get_session)):
+def register_user(user_data: UserCreate, session: Session = Depends(get_session)):
+    # 1. Sprawdź czy email istnieje
     existing_user = session.exec(select(User).where(User.email == user_data.email)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Ten email jest już zajęty")
     
-    hashed_pw = get_password_hash(user_data.hashed_password)
+    # 2. Zakoduj hasło (teraz bierzemy 'password' z Pydantic, a nie 'hashed_password')
+    hashed_pw = get_password_hash(user_data.password)
+    
+    # 3. Zapisz do bazy
     new_user = User(email=user_data.email, hashed_password=hashed_pw)
     session.add(new_user)
     session.commit()
     session.refresh(new_user)
+    
     return {"msg": "Konto utworzone pomyślnie", "email": new_user.email}
 
 # --- LOGOWANIE (WYDAWANIE TOKENA) ---
@@ -69,3 +76,27 @@ def login_for_access_token(
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
+
+@router.post("/change-password")
+def change_password(
+    password_data: PasswordChange,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Sprawdź czy stare hasło pasuje
+    if not verify_password(password_data.old_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Nieprawidłowe stare hasło")
+    
+    # 2. Zahashuj nowe hasło
+    new_hash = get_password_hash(password_data.new_password)
+    
+    # 3. Zapisz w bazie
+    current_user.hashed_password = new_hash
+    session.add(current_user)
+    session.commit()
+    
+    return {"message": "Hasło zostało zmienione pomyślnie"}

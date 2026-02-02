@@ -1,6 +1,7 @@
 import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  # <--- NOWY IMPORT
 from sqlmodel import Session, select
 from sqlalchemy.exc import OperationalError
 from fastapi.staticfiles import StaticFiles
@@ -28,17 +29,13 @@ def wait_for_db():
 
 def create_test_user():
     with Session(engine) as session:
-        # Szukamy usera ID=1 (albo po emailu)
         user = session.exec(select(User).where(User.email == "test@test.pl")).first()
         if not user:
             print("--- Tworzę testowego usera (admina) ---")
-            
-            # Tworzymy prawdziwy hash dla hasła "admin123"
             secure_password = get_password_hash("admin123")
-            
             test_user = User(
                 email="test@test.pl", 
-                hashed_password=secure_password, # Tu wstawiamy hash, nie zwykły tekst!
+                hashed_password=secure_password,
                 is_active=True
             )
             session.add(test_user)
@@ -54,9 +51,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Webownik API", lifespan=lifespan)
 
+# --- KONFIGURACJA CORS (NOWE) ---
+# To pozwala frontendowi (np. React na porcie 3000) gadać z backendem
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000", # Dla pewności
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"], # Pozwala na wszystkie metody: GET, POST, DELETE itd.
+    allow_headers=["*"], # Pozwala na wszystkie nagłówki (w tym Authorization)
+)
+# -------------------------------
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
-# PODPINAMY ROUTERY
+
+# Podpinamy routery
 app.include_router(auth.router)
-app.include_router(frontend.router)
 app.include_router(decks.router)
 app.include_router(quiz.router)
+app.include_router(frontend.router)
