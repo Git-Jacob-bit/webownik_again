@@ -1,7 +1,16 @@
+import os
+from dotenv import load_dotenv
 from sqlmodel import SQLModel, create_engine, Session
 
-# Używamy nazwy serwisu "db" z docker-compose jako hosta
-DATABASE_URL = "postgresql://user:password@db:5432/nauka_db"
+# 1. Załaduj zmienne z pliku .env
+load_dotenv()
+
+# 2. Pobierz adres z ukrytej zmiennej
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Zabezpieczenie: Jeśli zapomnisz o pliku .env, program krzyknie błędem od razu
+if not DATABASE_URL:
+    raise ValueError("Brak DATABASE_URL w pliku .env! Ustaw zmienne środowiskowe.")
 
 engine = create_engine(DATABASE_URL, echo=True)
 
