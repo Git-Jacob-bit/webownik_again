@@ -11,7 +11,7 @@ from database import init_db, engine
 from models import User
 
 # IMPORTUJEMY ROUTERY
-from routers import auth, decks, quiz
+from routers import auth, decks, quiz, dashboard
 #from routers import frontend
 
 def wait_for_db():
@@ -76,4 +76,5 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(decks.router)
 app.include_router(quiz.router)
+app.include_router(dashboard.router)
 #app.include_router(frontend.router)

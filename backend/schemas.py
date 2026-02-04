@@ -1,5 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime  # <--- DODAJ TĘ LINIJKĘ
 
 # --- WALIDACJA REJESTRACJI ---
 class UserCreate(BaseModel):
@@ -23,3 +24,34 @@ class QuestionUpdate(BaseModel):
 class QuestionCreate(BaseModel):
     content: str = Field(min_length=3, description="Treść pytania min. 3 znaki")
     # Nie musimy podawać odpowiedzi przy tworzeniu, bo backend sam dodaje 4 puste
+
+# ... (Poprzednie klasy UserCreate, QuestionCreate itd. zostają) ...
+
+# --- SCHEMATY TODO ---
+class TodoCreate(BaseModel):
+    text: str
+    done: bool = False
+
+class TodoRead(TodoCreate):
+    id: int
+    user_id: int
+
+# --- SCHEMATY NOTATEK ---
+class NoteCreate(BaseModel):
+    title: str
+    content: str
+
+class NoteRead(NoteCreate):
+    id: int
+    user_id: int
+    created_at: datetime
+
+# --- SCHEMATY LINKÓW ---
+class LinkCreate(BaseModel):
+    title: str
+    url: str
+    category: str = "Inne"
+
+class LinkRead(LinkCreate):
+    id: int
+    user_id: int

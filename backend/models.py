@@ -16,6 +16,10 @@ class User(SQLModel, table=True):
     decks: List["Deck"] = Relationship(back_populates="user")
     sessions: List["QuizSession"] = Relationship(back_populates="user")
 
+    todos: List["Todo"] = Relationship(back_populates="user")
+    notes: List["Note"] = Relationship(back_populates="user")
+    links: List["Link"] = Relationship(back_populates="user")
+
 # --- ZESTAW (Talia) ---
 class Deck(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -66,3 +70,32 @@ class QuizSession(SQLModel, table=True):
     total_time_seconds: int = Field(default=0)  # Ile czasu już upłynęło
     last_activity: datetime = Field(default_factory=datetime.utcnow) # Kiedy ostatnio coś kliknął
     is_paused: bool = Field(default=False)      # Czy zastopował czas
+
+# --- ZADANIE (TODO) ---
+class Todo(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    text: str  # Treść zadania
+    done: bool = Field(default=False)
+    
+    user_id: int = Field(foreign_key="user.id")
+    user: Optional[User] = Relationship(back_populates="todos")
+
+# --- NOTATKA ---
+class Note(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    content: str
+    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    user_id: int = Field(foreign_key="user.id")
+    user: Optional[User] = Relationship(back_populates="notes")
+
+# --- LINK (ZAKŁADKA) ---
+class Link(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    title: str
+    url: str
+    category: str = Field(default="Inne")
+    
+    user_id: int = Field(foreign_key="user.id")
+    user: Optional[User] = Relationship(back_populates="links")

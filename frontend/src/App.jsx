@@ -1,29 +1,32 @@
-import { useState, useEffect } from 'react'
+import React from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
+
+// Importujemy strony
+import Login from './pages/Login';
+import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import Dashboard from './pages/Dashboard'; // Zaraz to stworzymy
 
 function App() {
-  const [status, setStatus] = useState("Łączenie z backendem...")
-
-  useEffect(() => {
-    // Sprawdzamy czy backend żyje pod adresem z Twojego docker-compose
-    fetch("http://localhost:8000/docs") 
-      .then(res => {
-        if(res.ok) setStatus("✅ Połączono z Backendem!")
-        else setStatus("❌ Backend odpowiedział błędem")
-      })
-      .catch(err => setStatus("❌ Brak połączenia: " + err.message))
-  }, [])
+  const location = useLocation();
 
   return (
-    <div style={{ padding: '40px', fontFamily: 'sans-serif', textAlign: 'center' }}>
-      <h1>Nauka App - Frontend</h1>
-      <p style={{ fontSize: '1.2rem', color: status.includes('✅') ? 'green' : 'red' }}>
-        {status}
-      </p>
-      <div style={{ marginTop: '20px', border: '1px solid #ccc', padding: '10px' }}>
-        <p>Jeśli widzisz zielony napis, oznacza to, że CORS i Docker działają!</p>
-      </div>
-    </div>
-  )
+    // AnimatePresence musi obejmować Routes. 
+    // mode="wait" oznacza: najpierw schowaj starą, potem pokaż nową.
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        
+        {/* Nowa trasa Dashboard */}
+        <Route path="/dashboard" element={<Dashboard />} />
+      </Routes>
+    </AnimatePresence>
+  );
 }
 
-export default App
+export default App;
