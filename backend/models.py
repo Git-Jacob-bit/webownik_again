@@ -8,6 +8,9 @@ class User(SQLModel, table=True):
     email: str = Field(unique=True, index=True)
     hashed_password: str
     is_active: bool = Field(default=True)
+
+    reset_token: str | None = None
+    reset_token_expiry: datetime | None = None
     
     # Relacje
     decks: List["Deck"] = Relationship(back_populates="user")

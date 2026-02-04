@@ -9,4 +9,5 @@ python-jose[cryptography]
 jinja2
 python-dotenv
 email-validator
-
+pydantic-settings
+resend

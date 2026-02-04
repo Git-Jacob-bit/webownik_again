@@ -11,7 +11,8 @@ from database import init_db, engine
 from models import User
 
 # IMPORTUJEMY ROUTERY
-from routers import auth, frontend, decks, quiz
+from routers import auth, decks, quiz
+#from routers import frontend
 
 def wait_for_db():
     retries = 5
@@ -54,24 +55,25 @@ app = FastAPI(title="Webownik API", lifespan=lifespan)
 # --- KONFIGURACJA CORS (NOWE) ---
 # To pozwala frontendowi (np. React na porcie 3000) gadać z backendem
 origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000", # Dla pewności
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
+# --- KONFIGURACJA CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex="http://localhost:.*", # Pozwala na dowolny port na localhost
     allow_credentials=True,
-    allow_methods=["*"], # Pozwala na wszystkie metody: GET, POST, DELETE itd.
-    allow_headers=["*"], # Pozwala na wszystkie nagłówki (w tym Authorization)
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"], # Ważne, żeby React widział nagłówki
 )
 # -------------------------------
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+#app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Podpinamy routery
 app.include_router(auth.router)
 app.include_router(decks.router)
 app.include_router(quiz.router)
-app.include_router(frontend.router)
+#app.include_router(frontend.router)

@@ -1,6 +1,8 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Annotated
 from pydantic import BaseModel
+import secrets # Potrzebne do generowania tokenu resetu
+import resend
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -9,7 +11,10 @@ from jose import JWTError, jwt
 
 from database import get_session
 from models import User
-from security import verify_password, create_access_token, get_password_hash, SECRET_KEY, ALGORITHM
+# ZMIANA 1: Usuwamy SECRET_KEY i ALGORITHM z importów security
+from security import verify_password, create_access_token, get_password_hash
+# ZMIANA 2: Importujemy nasze nowe ustawienia
+from config import settings 
 from schemas import UserCreate
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
@@ -24,7 +29,8 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], sessio
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # ZMIANA 3: Używamy settings.secret_key i settings.algorithm
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
@@ -39,15 +45,12 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], sessio
 # --- REJESTRACJA ---
 @router.post("/register")
 def register_user(user_data: UserCreate, session: Session = Depends(get_session)):
-    # 1. Sprawdź czy email istnieje
     existing_user = session.exec(select(User).where(User.email == user_data.email)).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Ten email jest już zajęty")
     
-    # 2. Zakoduj hasło (teraz bierzemy 'password' z Pydantic, a nie 'hashed_password')
     hashed_pw = get_password_hash(user_data.password)
     
-    # 3. Zapisz do bazy
     new_user = User(email=user_data.email, hashed_password=hashed_pw)
     session.add(new_user)
     session.commit()
@@ -70,13 +73,15 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token_expires = timedelta(minutes=30)
+    # ZMIANA 4: Czas wygaśnięcia bierzemy z configu (opcjonalnie, bo security też to ma, ale tu dla pewności)
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
     
     return {"access_token": access_token, "token_type": "bearer"}
 
+# --- ZMIANA HASŁA (ZALOGOWANY UŻYTKOWNIK) ---
 class PasswordChange(BaseModel):
     old_password: str
     new_password: str
@@ -87,16 +92,74 @@ def change_password(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Sprawdź czy stare hasło pasuje
     if not verify_password(password_data.old_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Nieprawidłowe stare hasło")
     
-    # 2. Zahashuj nowe hasło
     new_hash = get_password_hash(password_data.new_password)
-    
-    # 3. Zapisz w bazie
     current_user.hashed_password = new_hash
     session.add(current_user)
     session.commit()
     
     return {"message": "Hasło zostało zmienione pomyślnie"}
+
+@router.post("/forgot-password")
+def forgot_password(email: str, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(User.email == email)).first()
+    
+    # 1. Jeśli usera nie ma, udajemy sukces (security)
+    if not user:
+        return {"message": "Jeśli e-mail istnieje, instrukcje zostały wysłane."}
+
+    # 2. Generujemy token i zapisujemy w bazie
+    token = secrets.token_urlsafe(32)
+    user.reset_token = token
+    user.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+    session.add(user)
+    session.commit()
+
+    # 3. Tworzymy link (korzystamy z domeny z configu)
+    reset_link = f"{settings.domain}/reset-password?token={token}"
+
+    # 4. Konfigurujemy Resend
+    resend.api_key = settings.resend_api_key
+
+    html_content = f"""
+    <p>Cześć!</p>
+    <p>Otrzymaliśmy prośbę o reset hasła w aplikacji Webownik.</p>
+    <p><a href="{reset_link}">Kliknij tutaj, aby zresetować hasło</a></p>
+    <p>Link jest ważny przez godzinę.</p>
+    """
+
+    # 5. Wysyłamy maila
+    try:
+        params = {
+            "from": settings.email_sender,
+            "to": [email],  # WAŻNE: Na darmowym Resend to musi być Twój mail (ten z konta Resend)
+            "subject": "Reset hasła - Webownik",
+            "html": html_content
+        }
+        resend.Emails.send(params)
+    except Exception as e:
+        print(f"BŁĄD WYSYŁKI MAILA: {e}")
+        # Możesz odkomentować linię niżej, jeśli chcesz widzieć błąd 500 w Swaggerze:
+        # raise HTTPException(status_code=500, detail="Błąd wysyłki e-maila")
+
+    return {"message": "Instrukcje wysłane na e-mail."}
+
+@router.post("/reset-password-confirm")
+def reset_password_confirm(token: str, new_password: str, session: Session = Depends(get_session)):
+    user = session.exec(select(User).where(
+        User.reset_token == token,
+        User.reset_token_expiry > datetime.utcnow()
+    )).first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="Token jest nieprawidłowy lub wygasł")
+
+    user.hashed_password = get_password_hash(new_password)
+    user.reset_token = None
+    user.reset_token_expiry = None
+    session.add(user)
+    session.commit()
+
+    return {"message": "Hasło zmienione. Możesz się zalogować."}

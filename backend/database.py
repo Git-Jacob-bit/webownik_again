@@ -1,18 +1,15 @@
-import os
-from dotenv import load_dotenv
 from sqlmodel import SQLModel, create_engine, Session
+from config import settings  # <--- IMPORTUJEMY USTAWIENIA
 
-# 1. Załaduj zmienne z pliku .env
-load_dotenv()
+# Tych linii już nie potrzebujesz, bo 'config.py' robi to za Ciebie:
+# import os
+# from dotenv import load_dotenv
+# load_dotenv()
+# DATABASE_URL = os.getenv("DATABASE_URL")
 
-# 2. Pobierz adres z ukrytej zmiennej
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Zabezpieczenie: Jeśli zapomnisz o pliku .env, program krzyknie błędem od razu
-if not DATABASE_URL:
-    raise ValueError("Brak DATABASE_URL w pliku .env! Ustaw zmienne środowiskowe.")
-
-engine = create_engine(DATABASE_URL, echo=True)
+# Tworzymy silnik bazy, biorąc gotowy URL z naszego configu
+# echo=True zostawiamy, żebyś widział zapytania SQL w logach
+engine = create_engine(settings.database_url, echo=True)
 
 def init_db():
     """Tworzy tabele w bazie danych przy starcie aplikacji"""
