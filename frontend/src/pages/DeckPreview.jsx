@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/AnimatedPage'; 
-import axios from 'axios';
+import api from '../api'; // <--- UŻYWAMY NASZEGO PLIKU API
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { 
@@ -9,15 +9,8 @@ import {
   CheckCircle2, Circle, Edit3, Loader2 
 } from 'lucide-react';
 
-const api = axios.create({
-  baseURL: 'http://localhost:8000',
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// --- USUNIĘTO RĘCZNĄ KONFIGURACJĘ AXIOSA ---
+// Teraz api.js zajmuje się adresem URL i tokenami automatycznie.
 
 const DeckPreview = () => {
   const { id } = useParams();
@@ -41,6 +34,7 @@ const DeckPreview = () => {
 
   const fetchData = async () => {
     try {
+      // Używamy api.get zamiast axios.get
       const res = await api.get(`/decks/${id}`);
       
       let deckData = res.data;
@@ -56,7 +50,6 @@ const DeckPreview = () => {
       setQuestions(questionsData);
     } catch (err) {
       console.error(err);
-      // UWAGA: Usunąłem tutaj navigate('/dashboard'), żebyś widział błąd i mógł kliknąć wstecz
       if (err.response && err.response.status === 405) {
         toast.error("Błąd backendu: Brak endpointu GET /decks/" + id);
       } else {
@@ -138,7 +131,6 @@ const DeckPreview = () => {
       <div className="min-h-screen bg-slate-950 text-white font-sans p-8">
         <div className="max-w-4xl mx-auto mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            {/* PRZYCISK WSTECZ - TERAZ BĘDZIE DZIAŁAĆ NAWET PRZY BŁĘDZIE */}
             <button 
               onClick={() => navigate('/dashboard')} 
               className="p-2 bg-slate-800 rounded-xl hover:bg-slate-700 transition-colors text-slate-400 hover:text-white"
@@ -156,7 +148,7 @@ const DeckPreview = () => {
           <button 
             onClick={() => setIsAdding(!isAdding)}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
-            disabled={!deck} // Blokujemy dodawanie jak nie ma zestawu
+            disabled={!deck} 
           >
             {isAdding ? <X className="h-5 w-5"/> : <Plus className="h-5 w-5"/>}
             {isAdding ? "Anuluj" : "Nowe pytanie"}

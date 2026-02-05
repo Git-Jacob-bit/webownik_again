@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
-import axios from 'axios';
+import api from '../api'; // <--- ZMIANA: Importujemy nasze api
 import { Link, useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/AnimatedPage';
 import { toast } from 'react-toastify';
@@ -11,7 +11,6 @@ function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Hook do przekierowania po zalogowaniu (na przyszłość)
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
@@ -25,19 +24,19 @@ function Login() {
       formData.append('username', email);
       formData.append('password', password);
 
-      // WAŻNE: Poprawny adres endpointu to /auth/token
-      const response = await axios.post('http://localhost:8000/auth/token', formData);
+      // ZMIANA: Używamy api.post i krótkiej ścieżki
+      // Axios automatycznie wykryje FormData i ustawi nagłówki
+      const response = await api.post('/auth/token', formData);
 
       console.log("SUKCES! Token:", response.data);
 
-      // Zapisujemy token w przeglądarce (na przyszłość)
+      // Zapisujemy token w przeglądarce
       localStorage.setItem('token', response.data.access_token);
 
       toast.success("Zalogowano pomyślnie!");
+      
+      // Przekierowanie na pulpit
       navigate('/dashboard');
-
-      // Tutaj w przyszłości odkomentujemy przekierowanie na pulpit:
-      // navigate('/dashboard');
 
     } catch (err) {
       console.error("Błąd logowania:", err);

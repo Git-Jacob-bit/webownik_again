@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Mail, Lock, ArrowRight, Loader2, UserPlus } from 'lucide-react';
-import axios from 'axios';
+import { Mail, Lock, Loader2, UserPlus } from 'lucide-react';
+import api from '../api'; // <--- ZMIANA: Importujemy nasze api
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 
@@ -24,8 +24,8 @@ function Register() {
     }
 
     try {
-      // Uderzamy do Twojego backendu
-      await axios.post('http://localhost:8000/auth/register', {
+      // ZMIANA: Używamy api.post i krótkiej ścieżki
+      await api.post('/auth/register', {
         email: email,
         password: password
       });

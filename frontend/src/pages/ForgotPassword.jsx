@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, ArrowRight, Loader2, ArrowLeft } from 'lucide-react';
-import axios from 'axios';
+import api from '../api'; // <--- ZMIANA: Importujemy nasze api
 import { Link } from 'react-router-dom';
 
 function ForgotPassword() {
@@ -14,9 +14,9 @@ function ForgotPassword() {
     setStatus({ type: '', message: '' });
 
     try {
-      // Uderzamy do endpointu z Resend
-      // Uwaga: Parametry query string (?email=...)
-      await axios.post(`http://localhost:8000/auth/forgot-password?email=${email}`);
+      // ZMIANA: Używamy api.post i krótkiej ścieżki.
+      // Adres serwera (localhost lub IP) zostanie dodany automatycznie z api.js
+      await api.post(`/auth/forgot-password?email=${email}`);
       
       setStatus({ 
         type: 'success', 

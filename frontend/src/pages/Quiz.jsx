@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Pause, Play, CheckCircle, XCircle, AlertCircle, Home, RotateCcw, Coffee, X, Clock } from 'lucide-react';
-import axios from 'axios';
+import api from '../api'; // <--- UŻYWAMY NASZEGO NOWEGO PLIKU
 import { toast } from 'react-toastify';
 
 const Quiz = () => {
   const { deckId } = useParams();
   const navigate = useNavigate();
-  const token = localStorage.getItem('token');
+  // const token = ... <--- USUNIĘTE (nie potrzebujesz tego tutaj, api.js to ogarnia)
 
   // --- STANY ---
   const [view, setView] = useState('loading'); 
@@ -31,25 +31,24 @@ const Quiz = () => {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await axios.get(`http://localhost:8000/quiz/status/${deckId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        // ZMIANA: api.get i krótka ścieżka bez headerów
+        const res = await api.get(`/quiz/status/${deckId}`);
         
         setDeckTitle(`Zestaw #${deckId}`);
         if (res.data.has_active_session) {
           setSessionData(res.data);
-          // Ustawiamy timer od razu, żeby wyświetlić go na ekranie startowym
           setTimer(res.data.time_spent || 0);
         }
         setView('start');
       } catch (err) {
+        console.error(err);
         toast.error("Błąd ładowania quizu");
         navigate('/dashboard');
       }
     };
     fetchStatus();
     return () => stopTimer();
-  }, [deckId, navigate, token]);
+  }, [deckId, navigate]);
 
   // --- LOGIKA ZEGARA ---
   const startTimer = () => {
@@ -75,9 +74,8 @@ const Quiz = () => {
   // --- AKCJE ---
   const handleStart = async (forceNew) => {
     try {
-      const res = await axios.post(`http://localhost:8000/quiz/start/${deckId}`, { force_new: forceNew }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // ZMIANA: api.post, bez pełnego URL i bez tokena w headerze
+      const res = await api.post(`/quiz/start/${deckId}`, { force_new: forceNew });
       
       const newTime = res.data.time_spent || 0;
       setTimer(newTime);
@@ -85,7 +83,7 @@ const Quiz = () => {
       setInitialCount(res.data.remaining || 10);
       
       setView('quiz');
-      startTimer(); // Startujemy zegar dopiero tutaj
+      startTimer();
       loadNextQuestion();
     } catch (err) {
       toast.error("Nie udało się rozpocząć quizu.");
@@ -95,16 +93,14 @@ const Quiz = () => {
   const loadNextQuestion = async () => {
     setSelectedAnswerIds(new Set());
     setFeedback(null);
-    
-    // Przewiń na górę przy nowym pytaniu (przydatne na mobile)
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
-      const res = await axios.get(`http://localhost:8000/quiz/next/${deckId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // ZMIANA: api.get
+      const res = await api.get(`/quiz/next/${deckId}`);
+      
       if (res.data.finished) {
-        stopTimer(); // <--- WAŻNE: Zatrzymujemy zegar natychmiast
+        stopTimer();
         setView('end');
         return;
       }
@@ -125,22 +121,21 @@ const Quiz = () => {
   };
 
   const confirmSelection = async () => {
-    stopTimer(); // Pauza na czas requestu
+    stopTimer();
     try {
-      const res = await axios.post(`http://localhost:8000/quiz/answer/${deckId}`, {
+      // ZMIANA: api.post
+      const res = await api.post(`/quiz/answer/${deckId}`, {
         answer_ids: Array.from(selectedAnswerIds)
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      });
 
       const result = res.data;
       
-      // Aktualizujemy czas z serwera
       if (result.time_spent !== undefined) setTimer(result.time_spent);
       
-      // Jeśli to nie koniec, wznawiamy zegar. Jeśli koniec - NIE wznawiamy.
       if (!result.finished) {
           startTimer();
       } else {
-          stopTimer(); // Dla pewności
+          stopTimer();
       }
 
       setFeedback({
@@ -157,11 +152,13 @@ const Quiz = () => {
   const handlePauseToggle = async () => {
     try {
       if (!isPaused) {
-        await axios.post(`http://localhost:8000/quiz/pause/${deckId}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        // ZMIANA: api.post
+        await api.post(`/quiz/pause/${deckId}`);
         setIsPaused(true);
         stopTimer();
       } else {
-        await axios.post(`http://localhost:8000/quiz/resume/${deckId}`, {}, { headers: { Authorization: `Bearer ${token}` } });
+        // ZMIANA: api.post
+        await api.post(`/quiz/resume/${deckId}`);
         setIsPaused(false);
         startTimer();
       }
@@ -187,17 +184,16 @@ const Quiz = () => {
   };
 
   return (
-    // ZMIANA: fixed zamiast absolute w tle + min-h-screen z paddingiem dla scrollowania
     <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col items-center py-8 px-4 relative">
       
-      {/* TŁO (FIXED - nie przewija się, zawsze wypełnia ekran) */}
+      {/* TŁO (FIXED) */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-20"></div>
         <div className="absolute -top-[20%] -right-[10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl"></div>
         <div className="absolute -bottom-[20%] -left-[10%] w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-3xl"></div>
       </div>
 
-      {/* PAUZA OVERLAY (FIXED) */}
+      {/* PAUZA OVERLAY */}
       <AnimatePresence>
         {isPaused && (
           <motion.div 
@@ -252,7 +248,7 @@ const Quiz = () => {
       {view === 'quiz' && (
         <div className="w-full max-w-2xl relative z-10 flex flex-col gap-6">
           
-          {/* HUD GÓRNY (Sticky - przyklejony przy scrollowaniu, opcjonalnie) */}
+          {/* HUD GÓRNY */}
           <div className="bg-slate-900/80 p-3 rounded-2xl border border-white/5 backdrop-blur-md sticky top-2 z-20 shadow-xl">
              <div className="flex items-center justify-between">
                 <div className="flex-1 mr-4">
@@ -278,12 +274,11 @@ const Quiz = () => {
                 key={question.id}
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
-                className="bg-slate-900/90 border border-slate-800 p-6 md:p-8 rounded-3xl shadow-2xl relative mb-20" // margin bottom żeby było miejsce na scroll
+                className="bg-slate-900/90 border border-slate-800 p-6 md:p-8 rounded-3xl shadow-2xl relative mb-20"
               >
                 <h2 className="text-2xl font-bold mb-2 leading-tight">{question.content}</h2>
                 <p className="text-slate-500 text-sm mb-6">Zaznacz poprawne odpowiedzi:</p>
 
-                {/* Lista odpowiedzi - scrolluje się naturalnie z całą stroną */}
                 <div className="space-y-3 mb-8">
                   {question.answers.map(ans => (
                     <button key={ans.id} onClick={() => toggleAnswer(ans.id)} disabled={feedback !== null} className={getButtonClass(ans.id)}>
@@ -294,7 +289,6 @@ const Quiz = () => {
                   ))}
                 </div>
 
-                {/* Sekcja przycisków - zawsze na dole kontenera */}
                 <div className="min-h-[120px] mt-4 pt-4 border-t border-white/5">
                   {!feedback ? (
                     <button
