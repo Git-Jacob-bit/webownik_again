@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # --- BACKEND (Python FastAPI) ---
+  api:
+    build: ./backend
+    container_name: webownik_backend
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    restart: always
+
+  # --- BAZA DANYCH (Postgres) ---
+  db:
+    image: postgres:15-alpine
+    container_name: webownik_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    restart: always
+
+  # --- FRONTEND (Nginx) ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod  # <--- TUTAJ BYŁ BRAK! Wskazujemy wersję produkcyjną
+      args:
+        - VITE_API_URL=https://api.webownik.qb-net.pl
+    container_name: webownik_frontend
+    ports:
+      - "5000:80"
+    depends_on:
+      - api
+    restart: always
+
+volumes:
+  postgres_data:
