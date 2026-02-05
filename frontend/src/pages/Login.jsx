@@ -3,6 +3,7 @@ import { Mail, Lock, ArrowRight, Loader2 } from 'lucide-react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/AnimatedPage';
+import { toast } from 'react-toastify';
 
 function Login() {
   const [email, setEmail] = useState('');
@@ -32,7 +33,7 @@ function Login() {
       // Zapisujemy token w przeglądarce (na przyszłość)
       localStorage.setItem('token', response.data.access_token);
 
-      alert("Zalogowano pomyślnie!");
+      toast.success("Zalogowano pomyślnie!");
       navigate('/dashboard');
 
       // Tutaj w przyszłości odkomentujemy przekierowanie na pulpit:

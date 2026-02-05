@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, Lock, ArrowRight, Loader2, UserPlus } from 'lucide-react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 function Register() {
   const [email, setEmail] = useState('');
@@ -29,7 +30,7 @@ function Register() {
         password: password
       });
       
-      alert("Konto utworzone! Możesz się zalogować.");
+      toast.success("Konto utworzone! Możesz się zalogować.");
       navigate('/login'); // Przekierowanie do logowania
       
     } catch (err) {
