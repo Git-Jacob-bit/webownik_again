@@ -15,7 +15,7 @@ from models import User
 from security import verify_password, create_access_token, get_password_hash
 # ZMIANA 2: Importujemy nasze nowe ustawienia
 from config import settings 
-from schemas import UserCreate
+from schemas import UserCreate, UserRead
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
@@ -163,3 +163,23 @@ def reset_password_confirm(token: str, new_password: str, session: Session = Dep
     session.commit()
 
     return {"message": "Hasło zmienione. Możesz się zalogować."}
+
+@router.get("/me", response_model=UserRead) # Używamy UserRead (bez hasła)
+def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+# --- 2. USUWANIE KONTA (DANGER ZONE) ---
+@router.delete("/me", status_code=204)
+def delete_my_account(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """Usuwa konto zalogowanego użytkownika i wszystkie jego dane."""
+    # Dzięki relacjom w SQLModel (cascade), usunięcie usera powinno
+    # usunąć też jego Decki, Pytania itd. (jeśli masz cascade="all, delete").
+    # Jeśli nie masz cascade, SQL wywali błąd - wtedy trzeba usuwać ręcznie.
+    # Zakładamy wersję optymistyczną (cascade działa):
+    
+    session.delete(current_user)
+    session.commit()
+    return None

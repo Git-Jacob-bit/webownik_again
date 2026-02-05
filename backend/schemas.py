@@ -55,3 +55,34 @@ class LinkCreate(BaseModel):
 class LinkRead(LinkCreate):
     id: int
     user_id: int
+
+
+# --- SCHEMATY DO ODCZYTU ZESTAWÓW (Deck -> Question -> Answer) ---
+
+# 1. Pojedyncza odpowiedź (do wyświetlania)
+class AnswerRead(BaseModel):
+    id: int
+    content: str
+    is_correct: bool
+
+# 2. Pytanie z listą odpowiedzi
+class QuestionRead(BaseModel):
+    id: int
+    content: str
+    answers: List[AnswerRead] = []
+
+# 3. Zestaw z listą pytań (Tego użyjemy w routerze)
+class DeckWithQuestions(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    questions: List[QuestionRead] = []
+
+# --- ZMIANA HASŁA ---
+class UserPasswordChange(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=4, description="Nowe hasło musi mieć min. 4 znaki")
+
+class UserRead(BaseModel):
+    id: int
+    email: EmailStr

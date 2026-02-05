@@ -7,7 +7,7 @@ from database import get_session
 from models import Deck, Question, Answer, User, QuizSession
 from parser import parse_txt_file
 from routers.auth import get_current_user
-from schemas import QuestionUpdate, QuestionCreate
+from schemas import QuestionUpdate, QuestionCreate, DeckWithQuestions
 
 MAX_FILE_SIZE = 1 * 1024 * 1024
 
@@ -242,3 +242,31 @@ def add_question_to_deck(
     
     session.commit()
     return {"id": new_q.id, "content": new_q.content}
+
+# --- POBIERZ POJEDYNCZY ZESTAW (TEGO BRAKOWAŁO) ---
+@router.get("/{deck_id}", response_model=DeckWithQuestions)
+def get_single_deck(
+    deck_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """Pobiera jeden zestaw wraz z pytaniami i odpowiedziami."""
+    
+    # 1. Pobieramy zestaw z bazy + ładujemy relacje (Pytania -> Odpowiedzi)
+    # Używamy selectinload, żeby pobrać wszystko w jednym zapytaniu (Eager Loading)
+    statement = (
+        select(Deck)
+        .where(Deck.id == deck_id)
+        .options(selectinload(Deck.questions).selectinload(Question.answers))
+    )
+    deck = session.exec(statement).first()
+
+    # 2. Sprawdzamy czy istnieje
+    if not deck:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zestawu")
+
+    # 3. Sprawdzamy czy należy do użytkownika
+    if deck.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Nie masz dostępu do tego zestawu")
+
+    return deck
