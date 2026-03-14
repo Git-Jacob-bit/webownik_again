@@ -54,5 +54,5 @@ Dzięki wykorzystaniu Dockera, uruchomienie projektu u siebie jest niezwykle pro
 
 1. **Sklonuj repozytorium:**
    ```bash
-   git clone [https://github.com/TwojaNazwaUzytkownika/webownik.git](https://github.com/TwojaNazwaUzytkownika/webownik.git)
+   git clone https://github.com/Git-Jacob-bit/webownik_again.git
    cd webownik
