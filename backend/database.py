@@ -9,7 +9,7 @@ from config import settings  # <--- IMPORTUJEMY USTAWIENIA
 
 # Tworzymy silnik bazy, biorąc gotowy URL z naszego configu
 # echo=True zostawiamy, żebyś widział zapytania SQL w logach
-engine = create_engine(settings.database_url, echo=True)
+engine = create_engine(settings.database_url, echo=False, pool_pre_ping=True)
 
 def init_db():
     """Tworzy tabele w bazie danych przy starcie aplikacji"""

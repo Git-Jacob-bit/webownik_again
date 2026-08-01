@@ -1,4 +1,7 @@
+from io import BytesIO
+from pathlib import PurePosixPath
 from typing import List
+from zipfile import BadZipFile, ZipFile
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, status
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
@@ -10,8 +13,83 @@ from routers.auth import get_current_user
 from schemas import QuestionUpdate, QuestionCreate, DeckWithQuestions
 
 MAX_FILE_SIZE = 1 * 1024 * 1024
+MAX_ZIP_SIZE = 10 * 1024 * 1024
+MAX_ARCHIVE_FILES = 200
+MAX_ARCHIVE_ENTRIES = 1000
+MAX_ARCHIVE_UNCOMPRESSED_SIZE = 20 * 1024 * 1024
 
 router = APIRouter(prefix="/decks", tags=["Decks"])
+
+
+def _decode_question_file(filename: str, content: bytes) -> tuple[str, str]:
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail=f"Plik {filename} przekracza limit 1 MB")
+    if not content:
+        raise HTTPException(status_code=400, detail=f"Plik {filename} jest pusty")
+
+    encodings = ['utf-8-sig']
+    if content.startswith((b'\xff\xfe', b'\xfe\xff')):
+        encodings.insert(0, 'utf-16')
+    encodings.append('cp1250')
+
+    for encoding in encodings:
+        try:
+            text = content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        control_chars = sum(ord(char) < 32 and char not in '\r\n\t' for char in text)
+        if '\x00' not in text and control_chars <= max(2, len(text) // 100):
+            return filename, text
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Plik {filename} nie jest poprawnym plikiem tekstowym (UTF-8, UTF-16 lub Windows-1250)",
+    )
+
+
+def _read_zip(filename: str, content: bytes) -> list[tuple[str, str]]:
+    if len(content) > MAX_ZIP_SIZE:
+        raise HTTPException(status_code=413, detail="Archiwum ZIP przekracza limit 10 MB")
+    try:
+        with ZipFile(BytesIO(content)) as archive:
+            entries = [entry for entry in archive.infolist() if not entry.is_dir()]
+            if not entries:
+                raise HTTPException(status_code=400, detail="Archiwum ZIP jest puste")
+            if len(entries) > MAX_ARCHIVE_ENTRIES:
+                raise HTTPException(status_code=413, detail=f"Archiwum może zawierać maksymalnie {MAX_ARCHIVE_ENTRIES} wpisów")
+
+            text_entries = [
+                entry for entry in entries
+                if PurePosixPath(entry.filename.replace('\\', '/')).suffix.lower() == '.txt'
+            ]
+            if not text_entries:
+                raise HTTPException(status_code=400, detail="Archiwum ZIP nie zawiera plików .txt")
+            if len(text_entries) > MAX_ARCHIVE_FILES:
+                raise HTTPException(status_code=413, detail=f"Archiwum może zawierać maksymalnie {MAX_ARCHIVE_FILES} plików TXT")
+            if sum(entry.file_size for entry in text_entries) > MAX_ARCHIVE_UNCOMPRESSED_SIZE:
+                raise HTTPException(status_code=413, detail="Rozpakowane pliki TXT przekraczają limit 20 MB")
+
+            result = []
+            actual_uncompressed_size = 0
+            for entry in text_entries:
+                path = PurePosixPath(entry.filename.replace('\\', '/'))
+                if path.is_absolute() or '..' in path.parts:
+                    raise HTTPException(status_code=400, detail="Archiwum zawiera niebezpieczną ścieżkę")
+                if entry.flag_bits & 0x1:
+                    raise HTTPException(status_code=400, detail=f"Plik {entry.filename} jest zaszyfrowany")
+                if entry.file_size > MAX_FILE_SIZE:
+                    raise HTTPException(status_code=413, detail=f"Plik {entry.filename} w ZIP przekracza limit 1 MB")
+                with archive.open(entry) as archived_file:
+                    extracted = archived_file.read(MAX_FILE_SIZE + 1)
+                if len(extracted) > MAX_FILE_SIZE:
+                    raise HTTPException(status_code=413, detail=f"Plik {entry.filename} po rozpakowaniu przekracza limit 1 MB")
+                actual_uncompressed_size += len(extracted)
+                if actual_uncompressed_size > MAX_ARCHIVE_UNCOMPRESSED_SIZE:
+                    raise HTTPException(status_code=413, detail="Rozpakowane pliki TXT przekraczają limit 20 MB")
+                result.append(_decode_question_file(entry.filename, extracted))
+            return result
+    except BadZipFile as exc:
+        raise HTTPException(status_code=400, detail=f"Plik {filename} nie jest poprawnym archiwum ZIP") from exc
 
 # --- POBIERZ MOJE ZESTAWY ---
 @router.get("/mine", response_model=List[Deck])
@@ -25,6 +103,76 @@ def read_my_decks(
 
 # --- UPLOAD ZESTAWU ---
 @router.post("/upload-form")
+async def upload_deck_form_secure(
+    files: List[UploadFile] = File(...),
+    deck_name: str = Form(..., min_length=3),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    normalized_name = deck_name.strip()
+    if len(normalized_name) < 3:
+        raise HTTPException(status_code=422, detail="Nazwa zestawu musi mieć co najmniej 3 znaki")
+
+    suffixes = [PurePosixPath((file.filename or '').lower()).suffix for file in files]
+    if not files:
+        raise HTTPException(status_code=400, detail="Wybierz pliki pytań lub archiwum ZIP")
+    if any(suffix not in {'.txt', '.zip'} for suffix in suffixes):
+        raise HTTPException(status_code=400, detail="Dozwolone są wyłącznie pliki .txt albo jedno archiwum .zip")
+    if '.zip' in suffixes and (len(files) != 1 or suffixes[0] != '.zip'):
+        raise HTTPException(status_code=400, detail="Archiwum ZIP należy przesłać osobno")
+
+    question_files = []
+    for file in files:
+        content = await file.read()
+        filename = file.filename or 'plik'
+        if suffixes[0] == '.zip':
+            question_files.extend(_read_zip(filename, content))
+        else:
+            question_files.append(_decode_question_file(filename, content))
+
+    parsed_questions = []
+    for filename, text_content in question_files:
+        if not text_content.strip():
+            raise HTTPException(status_code=400, detail=f"Plik {filename} jest pusty")
+        questions = parse_txt_file(text_content)
+        if not questions:
+            raise HTTPException(status_code=400, detail=f"W pliku {filename} nie znaleziono pytań w obsługiwanym formacie")
+        parsed_questions.extend(questions)
+
+    new_deck = Deck(title=normalized_name, user_id=current_user.id)
+    session.add(new_deck)
+    try:
+        session.flush()
+        questions_count = 0
+        for item in parsed_questions:
+            q_text = item.get('content', '').strip() if isinstance(item, dict) else ''
+            answers = item.get('answers', []) if isinstance(item, dict) else []
+            if not q_text or not answers:
+                raise HTTPException(status_code=400, detail="Każde pytanie musi mieć treść i co najmniej jedną odpowiedź")
+
+            question = Question(content=q_text, deck_id=new_deck.id)
+            session.add(question)
+            session.flush()
+            for answer_data in answers:
+                answer_text = str(answer_data.get('content', '')).strip() if isinstance(answer_data, dict) else ''
+                if not answer_text:
+                    raise HTTPException(status_code=400, detail=f"Pytanie „{q_text[:40]}” zawiera pustą odpowiedź")
+                session.add(Answer(
+                    content=answer_text,
+                    is_correct=bool(answer_data.get('is_correct', False)),
+                    question_id=question.id,
+                ))
+            questions_count += 1
+
+        session.commit()
+        session.refresh(new_deck)
+    except Exception:
+        session.rollback()
+        raise
+
+    return {"deck_id": new_deck.id, "deck_title": new_deck.title, "questions_added": questions_count}
+
+
 async def upload_deck_form(
     files: List[UploadFile] = File(...),
     deck_name: str = Form(..., min_length=3, description="Nazwa musi mieć min 3 znaki"),

@@ -3,11 +3,7 @@ uvicorn[standard]
 sqlmodel
 psycopg2-binary
 python-multipart
-passlib
-bcrypt==3.2.2
-python-jose[cryptography]
 jinja2
-python-dotenv
 email-validator
 pydantic-settings
-resend
+httpx

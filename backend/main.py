@@ -1,80 +1,105 @@
+import secrets
 import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware  # <--- NOWY IMPORT
-from sqlmodel import Session, select
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
-from fastapi.staticfiles import StaticFiles
+from sqlmodel import select
 
-from security import get_password_hash
-from database import init_db, engine
-from models import User
+from config import settings
+from database import engine
+from routers import auth, dashboard, decks, quiz
 
-# IMPORTUJEMY ROUTERY
-from routers import auth, decks, quiz, dashboard
-#from routers import frontend
 
-def wait_for_db():
-    retries = 5
-    while retries > 0:
+def wait_for_db() -> None:
+    for attempt in range(1, 6):
         try:
-            with engine.connect() as conn:
-                conn.execute(select(1))
-            print("--- Baza danych gotowa! ---")
+            with engine.connect() as connection:
+                connection.execute(select(1))
             return
         except OperationalError:
-            print(f"--- Baza jeszcze śpi... czekam ({retries}) ---")
+            if attempt == 5:
+                raise RuntimeError("Nie udało się połączyć z bazą danych")
             time.sleep(2)
-            retries -= 1
-    print("--- Nie udało się połączyć z bazą ---")
 
-def create_test_user():
-    with Session(engine) as session:
-        user = session.exec(select(User).where(User.email == "test@test.pl")).first()
-        if not user:
-            print("--- Tworzę testowego usera (admina) ---")
-            secure_password = get_password_hash("admin123")
-            test_user = User(
-                email="test@test.pl", 
-                hashed_password=secure_password,
-                is_active=True
-            )
-            session.add(test_user)
-            session.commit()
-            print("--- Gotowe! Login: test@test.pl, Hasło: admin123 ---")
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_: FastAPI):
     wait_for_db()
-    init_db()
-    create_test_user()
     yield
 
-app = FastAPI(title="Webownik API", lifespan=lifespan)
 
-# --- KONFIGURACJA CORS (NOWE) ---
-# To pozwala frontendowi (np. React na porcie 3000) gadać z backendem
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+app = FastAPI(
+    title="Webownik API",
+    lifespan=lifespan,
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
+)
 
-# --- KONFIGURACJA CORS ---
+allowed_hosts = [host.strip() for host in settings.allowed_hosts.split(",") if host.strip()]
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex="http://localhost:.*", # Pozwala na dowolny port na localhost
+    allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"], # Ważne, żeby React widział nagłówki
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Accept", "Authorization", "Content-Type", "X-CSRF-Token"],
 )
-# -------------------------------
 
-#app.mount("/static", StaticFiles(directory="static"), name="static")
+csrf_exempt = {
+    "/auth/token", "/auth/register", "/auth/forgot-password",
+    "/auth/reset-password-confirm",
+}
+rate_limits = {
+    "/auth/token": (10, 300),
+    "/auth/register": (5, 600),
+    "/auth/forgot-password": (3, 3600),
+    "/auth/reset-password-confirm": (5, 600),
+}
+request_history: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
-# Podpinamy routery
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    client_ip = request.headers.get("CF-Connecting-IP") or (request.client.host if request.client else "unknown")
+    limit = rate_limits.get(request.url.path)
+    if limit and request.method == "POST":
+        maximum, window = limit
+        key = (client_ip, request.url.path)
+        now = time.monotonic()
+        history = request_history[key]
+        while history and history[0] <= now - window:
+            history.popleft()
+        if len(history) >= maximum:
+            return JSONResponse({"detail": "Zbyt wiele prób. Spróbuj ponownie później."}, status_code=429)
+        history.append(now)
+
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path not in csrf_exempt:
+        if request.cookies.get(auth.ACCESS_COOKIE):
+            cookie_token = request.cookies.get(auth.CSRF_COOKIE, "")
+            header_token = request.headers.get("X-CSRF-Token", "")
+            if not cookie_token or not header_token or not secrets.compare_digest(cookie_token, header_token):
+                return JSONResponse({"detail": "Nieprawidłowy token CSRF"}, status_code=403)
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/auth/") else response.headers.get("Cache-Control", "")
+    if settings.is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+    return response
+
+
 app.include_router(auth.router)
 app.include_router(decks.router)
 app.include_router(quiz.router)
 app.include_router(dashboard.router)
-#app.include_router(frontend.router)

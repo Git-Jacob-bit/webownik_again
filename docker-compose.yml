@@ -1,58 +1,24 @@
-version: '3.8'
-
 services:
-  # Nasza aplikacja (Backend)
   api:
     build: ./backend
     container_name: nauka_backend
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    # Tu jest magia: Docker wczyta zmienne z pliku .env i poda je do Pythona
     env_file:
       - .env
     volumes:
-      - ./backend:/app:z
+      - ./backend:/app
     ports:
       - "8000:8000"
-    depends_on:
-      - db
-
-  # Baza Danych
-  db:
-    image: postgres:15-alpine
-    container_name: nauka_db # Ważne: To musi pasować do POSTGRES_HOST w Twoim .env
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    # Docker weźmie POSTGRES_USER, PASSWORD i DB prosto z pliku .env
-    # żeby utworzyć bazę przy pierwszym uruchomieniu
-    env_file:
-      - .env
-    ports:
-      - "5432:5432"
-
-  # Podgląd Bazy Danych
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: nauka_pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    depends_on:
-      - db
 
   frontend:
     build: ./frontend
     container_name: nauka_frontend
     ports:
-      - "5173:5173"  # Port Vite (standardowy)
+      - "5173:5173"
     volumes:
-      - ./frontend:/app:z           # Mapujemy Twój kod do środka kontenera (Hot Reload!)
-      - /app/node_modules         # Trik: To chroni biblioteki wewnątrz kontenera przed nadpisaniem przez hosta
+      - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - api
     environment:
-      - VITE_API_URL=http://localhost:8000  # Adres backendu dla frontu
-
-volumes:
-  postgres_data:
+      VITE_API_URL: http://localhost:8000

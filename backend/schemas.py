@@ -1,11 +1,13 @@
 from typing import List, Optional
 from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime  # <--- DODAJ TĘ LINIJKĘ
+from uuid import UUID
 
 # --- WALIDACJA REJESTRACJI ---
 class UserCreate(BaseModel):
     email: EmailStr  # Automatycznie sprawdzi poprawność adresu
     password: str = Field(min_length=8, description="Hasło musi mieć min. 8 znaków")
+    turnstile_token: str | None = None
 
 # --- WALIDACJA ODPOWIEDZI (PRZY EDYCJI) ---
 class AnswerUpdate(BaseModel):
@@ -34,7 +36,7 @@ class TodoCreate(BaseModel):
 
 class TodoRead(TodoCreate):
     id: int
-    user_id: int
+    user_id: UUID
 
 # --- SCHEMATY NOTATEK ---
 class NoteCreate(BaseModel):
@@ -43,7 +45,7 @@ class NoteCreate(BaseModel):
 
 class NoteRead(NoteCreate):
     id: int
-    user_id: int
+    user_id: UUID
     created_at: datetime
 
 # --- SCHEMATY LINKÓW ---
@@ -54,7 +56,7 @@ class LinkCreate(BaseModel):
 
 class LinkRead(LinkCreate):
     id: int
-    user_id: int
+    user_id: UUID
 
 
 # --- SCHEMATY DO ODCZYTU ZESTAWÓW (Deck -> Question -> Answer) ---
@@ -84,5 +86,5 @@ class UserPasswordChange(BaseModel):
     new_password: str = Field(min_length=4, description="Nowe hasło musi mieć min. 4 znaki")
 
 class UserRead(BaseModel):
-    id: int
+    id: UUID
     email: EmailStr

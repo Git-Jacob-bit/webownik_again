@@ -23,7 +23,8 @@ def parse_txt_file(content: str) -> List[Dict]:
             continue
 
         # Wykrycie nagłówka pytania, np. X1000 lub X010
-        if line.startswith('X') and all(c in '01' for c in line[1:]):
+        mask_match = re.fullmatch(r"[xX]\s*([01](?:\s*[01])*)", line)
+        if mask_match:
             
             # Jeśli mieliśmy już otwarte pytanie, zapisujemy je do listy
             if current_question:
@@ -33,7 +34,7 @@ def parse_txt_file(content: str) -> List[Dict]:
                 })
 
             # Resetujemy stan pod nowe pytanie
-            correct_mask = line[1:] # Pobieramy to co po X, np "1000"
+            correct_mask = re.sub(r"\s+", "", mask_match.group(1))
             current_question = None # Treść będzie w następnej linii
             current_answers = []
             

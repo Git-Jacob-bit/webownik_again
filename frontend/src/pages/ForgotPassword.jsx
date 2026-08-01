@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Mail, ArrowRight, Loader2, ArrowLeft } from 'lucide-react';
 import api from '../api'; // <--- ZMIANA: Importujemy nasze api
 import { Link } from 'react-router-dom';
+import InlineMessage from '../components/InlineMessage';
 
 function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -52,15 +53,7 @@ function ForgotPassword() {
             <p className="text-slate-400">Podaj email powiązany z Twoim kontem.</p>
           </div>
 
-          {status.message && (
-            <div className={`mb-6 p-4 rounded-lg text-sm border ${
-              status.type === 'success' 
-                ? 'bg-green-500/10 border-green-500/50 text-green-200' 
-                : 'bg-red-500/10 border-red-500/50 text-red-200'
-            }`}>
-              {status.message}
-            </div>
-          )}
+          <InlineMessage message={status.message} type={status.type} />
 
           <form onSubmit={handleReset} className="space-y-6">
             <div className="space-y-2">

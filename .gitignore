@@ -15,6 +15,7 @@ postgres_data/
 # Environment variables (Bezpieczeństwo!)
 .env
 .env.local
+.env.production
 
 # IDE (opcjonalnie, jeśli używasz VS Code lub PyCharm)
 .vscode/
@@ -29,3 +30,4 @@ node_modules/
 .next/
 build/
 dist/
+.tools/

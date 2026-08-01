@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/AnimatedPage';
-import axios from 'axios';
+import api from '../api';
 import { toast } from 'react-toastify';
 import { ArrowLeft, Lock, Save, Loader2, User, Mail, Trash2, ShieldAlert } from 'lucide-react';
 import { Settings as SettingsIcon } from 'lucide-react';
@@ -21,10 +21,7 @@ const Settings = () => {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const res = await axios.get('http://localhost:8000/auth/me', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await api.get('/auth/me');
         setUserInfo({ id: res.data.id, email: res.data.email });
       } catch (err) {
         console.error("Błąd pobierania danych usera", err);
@@ -42,10 +39,7 @@ const Settings = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
-      await axios.post('http://localhost:8000/auth/change-password', formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.post('/auth/change-password', formData);
       toast.success("Hasło zostało zmienione!");
       setFormData({ old_password: '', new_password: '' });
     } catch (err) {
@@ -63,15 +57,11 @@ const Settings = () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete('http://localhost:8000/auth/me', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete('/auth/me');
       
       toast.info("Twoje konto zostało usunięte. Żegnaj! 👋");
       
       // Czyścimy token i wylogowujemy
-      localStorage.removeItem('token');
       navigate('/');
       
     } catch (err) {
@@ -166,7 +156,7 @@ const Settings = () => {
                   onChange={handleChange}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 focus:border-blue-500 outline-none transition-all"
                   placeholder="Min. 4 znaki"
-                  minLength={4}
+                  minLength={8}
                   required
                 />
               </div>

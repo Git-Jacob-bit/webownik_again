@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 // 1. Importujemy bibliotekę powiadomień i jej style CSS
@@ -9,17 +9,25 @@ import 'react-toastify/dist/ReactToastify.css';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import DeckPreview from './pages/DeckPreview'; // <--- DODAJ IMPORT
 import Settings from './pages/Settings'; // <--- 1. CZY MASZ TEN IMPORT?
 import Quiz from './pages/Quiz';
+import api from './api';
 
 // --- BRAMKARZ (Private Route) ---
 const PrivateRoute = ({ children }) => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    return <Navigate to="/login" replace />;
-  }
+  const [state, setState] = useState('loading');
+  useEffect(() => {
+    let active = true;
+    api.get('/auth/me')
+      .then(() => { if (active) setState('authenticated'); })
+      .catch(() => { if (active) setState('anonymous'); });
+    return () => { active = false; };
+  }, []);
+  if (state === 'loading') return <div className="min-h-screen bg-slate-950" aria-label="Sprawdzanie sesji" />;
+  if (state === 'anonymous') return <Navigate to="/login" replace />;
   return children;
 };
 
@@ -44,14 +52,20 @@ function App() {
       />
 
       <AnimatePresence mode="wait">
-        <Routes location={location} key={location.pathname}>
+        <Routes location={location}>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           <Route
             path="/dashboard"
+            element={<Navigate to="/today" replace />}
+          />
+
+          <Route
+            path="/:section"
             element={
               <PrivateRoute>
                 <Dashboard />
@@ -86,7 +100,7 @@ function App() {
             }
           />
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/today" replace />} />
         </Routes>
       </AnimatePresence>
     </>

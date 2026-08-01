@@ -132,7 +132,7 @@ const DeckPreview = () => {
         <div className="max-w-4xl mx-auto mb-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
-              onClick={() => navigate('/dashboard')} 
+              onClick={() => navigate('/decks')}
               className="p-2 bg-slate-800 rounded-xl hover:bg-slate-700 transition-colors text-slate-400 hover:text-white"
             >
               <ArrowLeft className="h-6 w-6" />

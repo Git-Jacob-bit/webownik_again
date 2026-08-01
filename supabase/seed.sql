@@ -1,0 +1,1 @@
+-- Intentionally empty. New local users register through Supabase Auth.

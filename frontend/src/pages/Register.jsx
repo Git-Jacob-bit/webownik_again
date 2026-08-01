@@ -3,6 +3,8 @@ import { Mail, Lock, Loader2, UserPlus } from 'lucide-react';
 import api from '../api'; // <--- ZMIANA: Importujemy nasze api
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
+import InlineMessage from '../components/InlineMessage';
+import TurnstileWidget from '../components/TurnstileWidget';
 
 function Register() {
   const [email, setEmail] = useState('');
@@ -10,6 +12,7 @@ function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
   const navigate = useNavigate();
 
   const handleRegister = async (e) => {
@@ -22,21 +25,23 @@ function Register() {
       setIsLoading(false);
       return;
     }
+    if (password.length < 8) {
+      setError("Hasło musi mieć co najmniej 8 znaków.");
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      // ZMIANA: Używamy api.post i krótkiej ścieżki
-      await api.post('/auth/register', {
-        email: email,
-        password: password
-      });
-      
-      toast.success("Konto utworzone! Możesz się zalogować.");
-      navigate('/login'); // Przekierowanie do logowania
-      
+      await api.post('/auth/register', { email, password, turnstile_token: turnstileToken || null });
+      toast.success("Konto utworzone! Sprawdź skrzynkę e-mail.");
+      navigate('/login');
     } catch (err) {
       console.error(err);
-      if (err.response && err.response.data && err.response.data.detail) {
-        setError(err.response.data.detail); // Np. "Ten email jest już zajęty"
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map(item => item.msg).filter(Boolean).join(' ') || "Niepoprawne dane formularza.");
+      } else if (typeof detail === 'string') {
+        setError(detail);
       } else {
         setError("Wystąpił błąd rejestracji.");
       }
@@ -61,11 +66,7 @@ function Register() {
             <p className="text-slate-400">Utwórz darmowe konto w Webowniku</p>
           </div>
 
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-200 text-sm text-center">
-              {error}
-            </div>
-          )}
+          <InlineMessage message={error} />
 
           <form onSubmit={handleRegister} className="space-y-5">
             
@@ -94,6 +95,7 @@ function Register() {
                 </div>
                 <input
                   type="password"
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
@@ -111,6 +113,7 @@ function Register() {
                 </div>
                 <input
                   type="password"
+                  minLength={8}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="w-full bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
@@ -127,6 +130,8 @@ function Register() {
             >
               {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <><UserPlus className="h-5 w-5" /> Zarejestruj się</>}
             </button>
+
+            <TurnstileWidget onToken={setTurnstileToken} />
 
           </form>
 
