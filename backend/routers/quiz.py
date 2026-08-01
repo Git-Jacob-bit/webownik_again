@@ -10,6 +10,7 @@ from sqlmodel import Session, select
 from database import get_session
 from models import Answer, Deck, Question, QuizSession, User
 from routers.auth import get_current_user
+from limits import MAX_ANSWERS_PER_QUESTION
 
 router = APIRouter(prefix="/quiz", tags=["Quiz"])
 REQUIRED_CORRECT_STREAK = 2
@@ -88,11 +89,12 @@ def summary_payload(quiz_session: QuizSession, db: Session) -> dict:
     )[:5]
     question_ids = [question_id for question_id, _ in difficult]
     question_rows = db.exec(select(Question).where(Question.id.in_(question_ids))).all() if question_ids else []
-    contents = {question.id: question.content for question in question_rows}
+    contents = {question.id: (question.content, question.content_en) for question in question_rows}
     result["difficult_questions"] = [
         {
             "id": question_id,
-            "content": contents.get(question_id, f"Pytanie #{question_id}"),
+            "content": contents.get(question_id, (f"Pytanie #{question_id}", None))[0],
+            "content_en": contents.get(question_id, (None, None))[1],
             "incorrect": item.get("incorrect", 0),
             "correct": item.get("correct", 0),
         }
@@ -142,7 +144,7 @@ def check_quiz_status(
         elif migrated:
             session.add(quiz_session)
             session.commit()
-        return {"has_active_session": True, "deck_title": deck.title, **progress_payload(quiz_session)}
+        return {"has_active_session": True, "deck_title": deck.title, "deck_title_en": deck.title_en, **progress_payload(quiz_session)}
 
     completed = session.exec(select(QuizSession).where(
         QuizSession.user_id == current_user.id,
@@ -153,6 +155,7 @@ def check_quiz_status(
     return {
         "has_active_session": False,
         "deck_title": deck.title,
+        "deck_title_en": deck.title_en,
         "last_summary": summary_payload(completed, session) if completed else None,
         "remaining": 0,
         "time_spent": 0,
@@ -178,7 +181,7 @@ def start_quiz(
         existing.last_activity = datetime.utcnow()
         session.add(existing)
         session.commit()
-        return {"message": "Session continued", "session_id": existing.id, "deck_title": deck.title, **progress_payload(existing)}
+        return {"message": "Session continued", "session_id": existing.id, "deck_title": deck.title, "deck_title_en": deck.title_en, **progress_payload(existing)}
     if existing:
         # Jawne „zacznij od nowa” zastępuje niedokończoną sesję, zamiast je gromadzić.
         session.delete(existing)
@@ -209,7 +212,7 @@ def start_quiz(
     session.add(new_session)
     session.commit()
     session.refresh(new_session)
-    return {"message": "New session started", "session_id": new_session.id, "deck_title": deck.title, **progress_payload(new_session)}
+    return {"message": "New session started", "session_id": new_session.id, "deck_title": deck.title, "deck_title_en": deck.title_en, **progress_payload(new_session)}
 
 
 @router.post("/pause/{deck_id}")
@@ -266,11 +269,11 @@ def get_next_question(deck_id: int, session: Session = Depends(get_session), cur
     question = session.exec(select(Question).where(Question.id == queue[0]).options(selectinload(Question.answers))).first()
     if not question:
         raise HTTPException(status_code=409, detail="Pytanie z kolejki już nie istnieje")
-    answers = [{"id": answer.id, "content": answer.content} for answer in question.answers]
+    answers = [{"id": answer.id, "content": answer.content, "content_en": answer.content_en} for answer in question.answers]
     random.shuffle(answers)
     return {
         "finished": False,
-        "question": {"id": question.id, "content": question.content, "answers": answers},
+        "question": {"id": question.id, "content": question.content, "content_en": question.content_en, "answers": answers},
         **progress_payload(quiz_session),
     }
 
@@ -278,7 +281,7 @@ def get_next_question(deck_id: int, session: Session = Depends(get_session), cur
 @router.post("/answer/{deck_id}")
 def submit_answer(
     deck_id: int,
-    answer_ids: List[int] = Body(..., embed=True),
+    answer_ids: List[int] = Body(..., embed=True, max_length=MAX_ANSWERS_PER_QUESTION),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):

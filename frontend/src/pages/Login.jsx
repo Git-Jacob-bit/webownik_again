@@ -76,6 +76,7 @@ function Login() {
       navigate('/dashboard');
     } catch (err) {
       if (err.code === 'ERR_NETWORK') setError('Brak połączenia z serwerem API.');
+      else if (err.response?.status === 403) setError(err.response?.data?.detail || 'Najpierw potwierdź adres e-mail.');
       else if (err.response?.status === 401) setError('Błędny e-mail lub hasło.');
       else setError('Wystąpił nieoczekiwany błąd.');
     } finally {

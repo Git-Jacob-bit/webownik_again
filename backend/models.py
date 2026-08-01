@@ -21,6 +21,10 @@ class User(SQLModel, table=True):
 class Deck(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
+    title_en: Optional[str] = None
+    translation_status: str = Field(default="pending")
+    translation_completed: int = Field(default=0)
+    translation_total: int = Field(default=0)
     description: Optional[str] = None
     user_id: UUID = Field(foreign_key="user.id")
     
@@ -33,6 +37,7 @@ class Deck(SQLModel, table=True):
 class Question(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     content: str
+    content_en: Optional[str] = None
     deck_id: int = Field(foreign_key="deck.id")
     
     # Relacje
@@ -43,6 +48,7 @@ class Question(SQLModel, table=True):
 class Answer(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     content: str
+    content_en: Optional[str] = None
     is_correct: bool = Field(default=False)
     question_id: int = Field(foreign_key="question.id")
     

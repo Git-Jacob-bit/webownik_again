@@ -3,8 +3,83 @@
 @tailwind utilities;
 
 body {
-  background-color: #020617; /* To jest kolor slate-950 */
+  background-color: #020617;
   color: white;
   margin: 0;
-  overflow-x: hidden; /* Żeby paski przewijania nie skakały przy animacji */
+  overflow-x: hidden;
+  transition: background-color 200ms ease, color 200ms ease;
 }
+
+html.light body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* Jasny motyw dla istniejącego systemu powierzchni opartego na Slate. */
+html.light :is([class~="bg-slate-950"], [class~="bg-slate-950/85"], [class~="bg-slate-950/75"], [class~="bg-slate-950/60"]) { background-color: #f8fafc !important; }
+html.light :is([class~="bg-slate-900"], [class~="bg-slate-900/95"], [class~="bg-slate-900/80"], [class~="bg-slate-900/60"], [class~="bg-slate-900/55"], [class~="bg-slate-900/50"], [class~="bg-slate-900/40"], [class~="bg-slate-900/30"]) { background-color: #fff !important; }
+html.light :is([class~="bg-slate-800"], [class~="bg-slate-800/80"], [class~="bg-slate-800/60"], [class~="bg-slate-800/50"], [class~="bg-slate-800/40"]) { background-color: #f1f5f9 !important; }
+html.light :is([class~="bg-slate-700"], [class~="bg-slate-600"]) { background-color: #e2e8f0 !important; }
+html.light :is([class~="bg-white/5"], [class~="bg-white/10"], [class~="bg-white/[0.025]"], [class~="bg-white/[0.035]"], [class~="bg-white/[0.04]"], [class~="bg-white/[0.045]"], [class~="bg-white/[0.05]"], [class~="bg-white/[0.055]"], [class~="bg-white/[0.06]"], [class~="bg-white/[0.07]"], [class~="bg-white/[0.09]"]) { background-color: rgb(15 23 42 / 0.035) !important; }
+
+html.light :is([class~="border-slate-800"], [class~="border-slate-700"], [class~="border-slate-600"], [class~="border-white/5"], [class~="border-white/10"], [class~="border-white/15"], [class~="border-white/[0.06]"], [class~="border-white/[0.07]"]) { border-color: rgb(203 213 225 / 0.75) !important; }
+
+html.light .text-white,
+html.light [class~="text-slate-200"],
+html.light [class~="text-slate-300"] { color: #0f172a !important; }
+html.light [class~="text-slate-400"] { color: #475569 !important; }
+html.light [class~="text-slate-500"],
+html.light [class~="text-slate-600"] { color: #64748b !important; }
+
+html.light [class*="bg-blue-5"].text-white,
+html.light [class*="bg-blue-6"].text-white,
+html.light [class*="bg-green-5"].text-white,
+html.light [class*="bg-green-6"].text-white,
+html.light [class*="bg-purple-6"].text-white,
+html.light [class*="bg-red-5"].text-white,
+html.light [class*="bg-red-6"].text-white,
+html.light [class*="from-blue-"].text-white,
+html.light [class*="from-violet-"].text-white { color: #fff !important; }
+
+html.light input,
+html.light textarea,
+html.light select { color: #0f172a; }
+html.light input::placeholder,
+html.light textarea::placeholder { color: #64748b; }
+
+/* Akcenty tekstowe muszą być ciemniejsze na jasnych powierzchniach. */
+html.light :is([class~="text-blue-100"], [class~="text-blue-200"], [class~="text-blue-300"], [class~="text-blue-300/70"]) { color: #1d4ed8 !important; }
+html.light :is([class~="text-blue-400"], [class~="text-blue-500"]) { color: #1d4ed8 !important; }
+html.light :is([class~="text-green-200"], [class~="text-green-300"], [class~="text-green-400"]) { color: #15803d !important; }
+html.light [class~="text-cyan-300"] { color: #0e7490 !important; }
+html.light [class~="text-purple-400"] { color: #7e22ce !important; }
+html.light [class~="text-violet-300"] { color: #6d28d9 !important; }
+html.light :is([class~="text-yellow-300"], [class~="text-yellow-400"], [class~="text-yellow-500"], [class~="text-amber-400"], [class~="text-amber-500"]) { color: #b45309 !important; }
+html.light :is([class~="text-red-200"], [class~="text-red-300"], [class~="text-red-400"], [class~="text-red-400/70"], [class~="text-red-500"]) { color: #b91c1c !important; }
+
+html.light :is([class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-green-500"], [class~="bg-green-600"], [class~="bg-purple-600"], [class~="bg-yellow-600"], [class~="bg-red-500"], [class~="bg-red-500/70"]) { color: #fff !important; }
+
+/* Delikatne kolorowe powierzchnie i obramowania w jasnym motywie. */
+html.light :is([class~="bg-blue-500/5"], [class~="bg-blue-500/10"], [class~="bg-blue-500/15"], [class~="bg-blue-500/20"], [class~="bg-blue-500/[0.07]"], [class~="bg-blue-600/20"], [class~="bg-blue-700/15"], [class~="bg-blue-900/20"]) { background-color: #eff6ff !important; }
+html.light :is([class~="bg-green-400/10"], [class~="bg-green-500/5"], [class~="bg-green-500/10"], [class~="bg-green-500/15"], [class~="bg-green-500/20"]) { background-color: #f0fdf4 !important; }
+html.light [class~="bg-cyan-500/10"] { background-color: #ecfeff !important; }
+html.light :is([class~="bg-purple-500/10"], [class~="bg-violet-500/10"], [class~="bg-violet-700/15"], [class~="bg-indigo-900/20"]) { background-color: #f5f3ff !important; }
+html.light :is([class~="bg-yellow-500/10"], [class~="bg-amber-50"], [class~="bg-yellow-100/70"]) { background-color: #fffbeb !important; }
+html.light :is([class~="bg-red-500/5"], [class~="bg-red-500/10"], [class~="bg-red-500/15"], [class~="bg-red-500/20"], [class~="bg-red-900/20"], [class~="bg-red-950/10"]) { background-color: #fef2f2 !important; }
+
+html.light :is([class~="border-blue-400/20"], [class~="border-blue-400/30"], [class~="border-blue-500/10"], [class~="border-blue-500/15"], [class~="border-blue-500/30"], [class~="border-blue-500/50"]) { border-color: #93c5fd !important; }
+html.light :is([class~="border-green-400/30"], [class~="border-green-500/10"], [class~="border-green-500/20"], [class~="border-green-500/30"], [class~="border-green-500/50"]) { border-color: #86efac !important; }
+html.light :is([class~="border-purple-500/30"], [class~="border-purple-500/50"]) { border-color: #c4b5fd !important; }
+html.light :is([class~="border-red-500/10"], [class~="border-red-500/50"], [class~="border-red-900"], [class~="border-red-900/30"]) { border-color: #fca5a5 !important; }
+
+/* Jasna wersja gradientu głównego banera i czytelniejsze cienie. */
+html.light [class~="from-blue-600/15"] {
+  --tw-gradient-from: rgb(219 234 254 / 0.95) var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(219 234 254 / 0) var(--tw-gradient-to-position) !important;
+}
+html.light [class~="via-slate-900/80"] {
+  --tw-gradient-to: rgb(255 255 255 / 0) var(--tw-gradient-to-position) !important;
+  --tw-gradient-stops: var(--tw-gradient-from), #fff var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+}
+html.light [class~="to-violet-600/10"] { --tw-gradient-to: #ede9fe var(--tw-gradient-to-position) !important; }
+html.light [class*="shadow-blue-950/"] { --tw-shadow-color: rgb(30 64 175 / 0.12) !important; }

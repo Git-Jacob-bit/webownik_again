@@ -12,7 +12,7 @@ from sqlmodel import select
 
 from config import settings
 from database import engine
-from routers import auth, dashboard, decks, quiz
+from routers import auth, dashboard, decks, github, quiz
 
 
 def wait_for_db() -> None:
@@ -62,21 +62,50 @@ rate_limits = {
     "/auth/reset-password-confirm": (5, 600),
 }
 request_history: dict[tuple[str, str], deque[float]] = defaultdict(deque)
+MAX_RATE_LIMIT_KEYS = 10_000
+
+
+def _request_limits(request: Request) -> list[tuple[str, int, int]]:
+    limits = [("global", 600, 60)]
+    configured = rate_limits.get(request.url.path)
+    if configured and request.method == "POST":
+        limits.append((request.url.path, *configured))
+    if request.method == "POST" and request.url.path == "/decks/upload-form":
+        limits.append(("deck-upload", 10, 3600))
+    if request.method == "POST" and request.url.path.startswith("/decks/") and request.url.path.endswith("/translate"):
+        limits.append(("translation-start", 10, 3600))
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        limits.append(("mutations", 120, 60))
+    return limits
+
+
+def _prune_rate_limit_keys(now: float) -> None:
+    if len(request_history) <= MAX_RATE_LIMIT_KEYS:
+        return
+    stale = [key for key, history in request_history.items() if not history or history[-1] <= now - 3600]
+    for key in stale:
+        request_history.pop(key, None)
+    while len(request_history) > MAX_RATE_LIMIT_KEYS:
+        request_history.pop(next(iter(request_history)))
 
 
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    client_ip = request.headers.get("CF-Connecting-IP") or (request.client.host if request.client else "unknown")
-    limit = rate_limits.get(request.url.path)
-    if limit and request.method == "POST":
-        maximum, window = limit
-        key = (client_ip, request.url.path)
-        now = time.monotonic()
+    forwarded_ip = request.headers.get("CF-Connecting-IP") if settings.is_production else None
+    client_ip = forwarded_ip or (request.client.host if request.client else "unknown")
+    now = time.monotonic()
+    _prune_rate_limit_keys(now)
+    for bucket, maximum, window in _request_limits(request):
+        key = (client_ip, bucket)
         history = request_history[key]
         while history and history[0] <= now - window:
             history.popleft()
         if len(history) >= maximum:
-            return JSONResponse({"detail": "Zbyt wiele prób. Spróbuj ponownie później."}, status_code=429)
+            return JSONResponse(
+                {"detail": "Zbyt wiele żądań. Spróbuj ponownie później."},
+                status_code=429,
+                headers={"Retry-After": str(window)},
+            )
         history.append(now)
 
     if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path not in csrf_exempt:
@@ -92,14 +121,22 @@ async def security_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
-    response.headers["Cache-Control"] = "no-store" if request.url.path.startswith("/auth/") else response.headers.get("Cache-Control", "")
+    response.headers["Cache-Control"] = "no-store"
     if settings.is_production:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
     return response
 
 
+@app.get("/health", include_in_schema=False)
+def healthcheck():
+    with engine.connect() as connection:
+        connection.execute(select(1))
+    return {"status": "ok"}
+
+
 app.include_router(auth.router)
 app.include_router(decks.router)
 app.include_router(quiz.router)
 app.include_router(dashboard.router)
+app.include_router(github.router)

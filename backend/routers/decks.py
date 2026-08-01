@@ -5,16 +5,23 @@ from zipfile import BadZipFile, ZipFile
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, status
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
+from sqlalchemy import func
 
 from database import get_session
 from models import Deck, Question, Answer, User, QuizSession
 from parser import parse_txt_file
 from routers.auth import get_current_user
 from schemas import QuestionUpdate, QuestionCreate, DeckWithQuestions
+from translation import enqueue_deck_translation
+from limits import (
+    MAX_ANSWERS_PER_QUESTION, MAX_ANSWER_LENGTH, MAX_DECKS_PER_USER,
+    MAX_DECK_TITLE_LENGTH, MAX_QUESTION_LENGTH, MAX_QUESTIONS_PER_DECK,
+    MAX_QUESTIONS_PER_USER, MAX_UPLOAD_FILES, MAX_UPLOAD_TOTAL_SIZE,
+)
 
 MAX_FILE_SIZE = 1 * 1024 * 1024
 MAX_ZIP_SIZE = 10 * 1024 * 1024
-MAX_ARCHIVE_FILES = 200
+MAX_ARCHIVE_FILES = MAX_UPLOAD_FILES
 MAX_ARCHIVE_ENTRIES = 1000
 MAX_ARCHIVE_UNCOMPRESSED_SIZE = 20 * 1024 * 1024
 
@@ -105,7 +112,7 @@ def read_my_decks(
 @router.post("/upload-form")
 async def upload_deck_form_secure(
     files: List[UploadFile] = File(...),
-    deck_name: str = Form(..., min_length=3),
+    deck_name: str = Form(..., min_length=3, max_length=MAX_DECK_TITLE_LENGTH),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ):
@@ -113,19 +120,32 @@ async def upload_deck_form_secure(
     if len(normalized_name) < 3:
         raise HTTPException(status_code=422, detail="Nazwa zestawu musi mieć co najmniej 3 znaki")
 
-    suffixes = [PurePosixPath((file.filename or '').lower()).suffix for file in files]
     if not files:
         raise HTTPException(status_code=400, detail="Wybierz pliki pytań lub archiwum ZIP")
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(status_code=413, detail=f"Jednorazowo można przesłać maksymalnie {MAX_UPLOAD_FILES} plików")
+    deck_count = session.exec(select(func.count(Deck.id)).where(Deck.user_id == current_user.id)).one()
+    if deck_count >= MAX_DECKS_PER_USER:
+        raise HTTPException(status_code=409, detail=f"Limit zestawów wynosi {MAX_DECKS_PER_USER}")
+
+    suffixes = [PurePosixPath((file.filename or '').lower()).suffix for file in files]
     if any(suffix not in {'.txt', '.zip'} for suffix in suffixes):
         raise HTTPException(status_code=400, detail="Dozwolone są wyłącznie pliki .txt albo jedno archiwum .zip")
     if '.zip' in suffixes and (len(files) != 1 or suffixes[0] != '.zip'):
         raise HTTPException(status_code=400, detail="Archiwum ZIP należy przesłać osobno")
 
     question_files = []
-    for file in files:
-        content = await file.read()
+    total_uploaded = 0
+    for index, file in enumerate(files):
+        read_limit = MAX_ZIP_SIZE if suffixes[index] == '.zip' else MAX_FILE_SIZE
+        content = await file.read(read_limit + 1)
+        if len(content) > read_limit:
+            raise HTTPException(status_code=413, detail=f"Plik {file.filename or 'plik'} przekracza dozwolony limit")
+        total_uploaded += len(content)
+        if total_uploaded > MAX_UPLOAD_TOTAL_SIZE:
+            raise HTTPException(status_code=413, detail="Łączny rozmiar plików przekracza limit 20 MB")
         filename = file.filename or 'plik'
-        if suffixes[0] == '.zip':
+        if suffixes[index] == '.zip':
             question_files.extend(_read_zip(filename, content))
         else:
             question_files.append(_decode_question_file(filename, content))
@@ -139,7 +159,17 @@ async def upload_deck_form_secure(
             raise HTTPException(status_code=400, detail=f"W pliku {filename} nie znaleziono pytań w obsługiwanym formacie")
         parsed_questions.extend(questions)
 
-    new_deck = Deck(title=normalized_name, user_id=current_user.id)
+    if len(parsed_questions) > MAX_QUESTIONS_PER_DECK:
+        raise HTTPException(status_code=413, detail=f"Zestaw może zawierać maksymalnie {MAX_QUESTIONS_PER_DECK} pytań")
+    user_question_count = session.exec(
+        select(func.count(Question.id)).join(Deck).where(Deck.user_id == current_user.id)
+    ).one()
+    if user_question_count + len(parsed_questions) > MAX_QUESTIONS_PER_USER:
+        raise HTTPException(status_code=409, detail=f"Łączny limit pytań użytkownika wynosi {MAX_QUESTIONS_PER_USER}")
+
+    # Import ma być szybki: zapisujemy wyłącznie polski oryginał.
+    # Angielska kopia powstanie na żądanie po przełączeniu aplikacji na EN.
+    new_deck = Deck(title=normalized_name, translation_status="pending", user_id=current_user.id)
     session.add(new_deck)
     try:
         session.flush()
@@ -149,6 +179,10 @@ async def upload_deck_form_secure(
             answers = item.get('answers', []) if isinstance(item, dict) else []
             if not q_text or not answers:
                 raise HTTPException(status_code=400, detail="Każde pytanie musi mieć treść i co najmniej jedną odpowiedź")
+            if len(q_text) > MAX_QUESTION_LENGTH:
+                raise HTTPException(status_code=413, detail=f"Pytanie przekracza limit {MAX_QUESTION_LENGTH} znaków")
+            if len(answers) > MAX_ANSWERS_PER_QUESTION:
+                raise HTTPException(status_code=413, detail=f"Pytanie może mieć maksymalnie {MAX_ANSWERS_PER_QUESTION} odpowiedzi")
 
             question = Question(content=q_text, deck_id=new_deck.id)
             session.add(question)
@@ -157,6 +191,8 @@ async def upload_deck_form_secure(
                 answer_text = str(answer_data.get('content', '')).strip() if isinstance(answer_data, dict) else ''
                 if not answer_text:
                     raise HTTPException(status_code=400, detail=f"Pytanie „{q_text[:40]}” zawiera pustą odpowiedź")
+                if len(answer_text) > MAX_ANSWER_LENGTH:
+                    raise HTTPException(status_code=413, detail=f"Odpowiedź przekracza limit {MAX_ANSWER_LENGTH} znaków")
                 session.add(Answer(
                     content=answer_text,
                     is_correct=bool(answer_data.get('is_correct', False)),
@@ -170,7 +206,7 @@ async def upload_deck_form_secure(
         session.rollback()
         raise
 
-    return {"deck_id": new_deck.id, "deck_title": new_deck.title, "questions_added": questions_count}
+    return {"deck_id": new_deck.id, "deck_title": new_deck.title, "questions_added": questions_count, "translation_status": "pending"}
 
 
 async def upload_deck_form(
@@ -293,6 +329,7 @@ def update_full_question(
 
     # 2. Aktualizujemy treść (Pydantic już sprawdził, że content > 3 znaki)
     question.content = data.content
+    question.content_en = None
     session.add(question)
 
     # 3. Aktualizujemy odpowiedzi
@@ -302,9 +339,13 @@ def update_full_question(
         
         if answer and answer.question_id == question.id:
             answer.content = ans_data.content
+            answer.content_en = None
             answer.is_correct = ans_data.is_correct
             session.add(answer)
 
+    question.deck.translation_status = "pending"
+    question.deck.translation_completed = 0
+    session.add(question.deck)
     session.commit()
     return {"ok": True}
 
@@ -377,6 +418,12 @@ def add_question_to_deck(
     deck = session.get(Deck, deck_id)
     if not deck or deck.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Brak dostępu")
+    deck_question_count = session.exec(select(func.count(Question.id)).where(Question.deck_id == deck_id)).one()
+    user_question_count = session.exec(
+        select(func.count(Question.id)).join(Deck).where(Deck.user_id == current_user.id)
+    ).one()
+    if deck_question_count >= MAX_QUESTIONS_PER_DECK or user_question_count >= MAX_QUESTIONS_PER_USER:
+        raise HTTPException(status_code=409, detail="Osiągnięto limit pytań")
     
     # Tu zmiana: bierzemy content z obiektu data
     new_q = Question(content=data.content, deck_id=deck_id)
@@ -386,12 +433,50 @@ def add_question_to_deck(
     
     # Dodajemy 4 puste odpowiedzi na start
     for i in range(4):
-        session.add(Answer(content=f"Odpowiedź {i+1}", is_correct=False, question_id=new_q.id))
+        polish_content = f"Odpowiedź {i+1}"
+        session.add(Answer(content=polish_content, is_correct=False, question_id=new_q.id))
     
+    deck.translation_status = "pending"
+    deck.translation_completed = 0
+    session.add(deck)
     session.commit()
     return {"id": new_q.id, "content": new_q.content}
 
-# --- POBIERZ POJEDYNCZY ZESTAW (TEGO BRAKOWAŁO) ---
+@router.post("/{deck_id}/translate")
+def translate_deck_to_english(
+    deck_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Uzupełnia angielską kopię. Polskie pola źródłowe nigdy nie są modyfikowane."""
+    statement = (
+        select(Deck)
+        .where(Deck.id == deck_id)
+        .options(selectinload(Deck.questions).selectinload(Question.answers))
+    )
+    deck = session.exec(statement).first()
+    if not deck or deck.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Nie znaleziono zestawu")
+
+    if deck.translation_status != "processing":
+        deck.translation_status = "queued"
+        deck.translation_completed = 0
+        session.add(deck)
+        session.commit()
+        queue_result = enqueue_deck_translation(deck.id, current_user.id)
+        if queue_result in {"user_limit", "global_limit"}:
+            deck.translation_status = "pending"
+            session.add(deck)
+            session.commit()
+            detail = "Masz już maksymalną liczbę tłumaczeń w kolejce" if queue_result == "user_limit" else "Kolejka tłumaczeń jest pełna"
+            raise HTTPException(status_code=429, detail=detail)
+        queued = queue_result == "queued"
+    else:
+        queued = False
+    return {"ok": True, "queued": queued, "translation_status": deck.translation_status}
+
+
+# --- POBIERZ POJEDYNCZY ZESTAW ---
 @router.get("/{deck_id}", response_model=DeckWithQuestions)
 def get_single_deck(
     deck_id: int,

@@ -3,11 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/AnimatedPage';
 import api from '../api';
 import { toast } from 'react-toastify';
-import { ArrowLeft, Lock, Save, Loader2, User, Mail, Trash2, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Lock, Save, Loader2, User, Mail, Trash2, ShieldAlert, Moon, Sun, Languages } from 'lucide-react';
 import { Settings as SettingsIcon } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
 
 const Settings = () => {
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
+  const { language, setLanguage, t } = useLanguage();
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [userInfo, setUserInfo] = useState({ id: '', email: '' });
   
@@ -52,7 +58,7 @@ const Settings = () => {
 
   // 3. Obsługa usuwania konta
   const handleDeleteAccount = async () => {
-    if (!window.confirm("CZY JESTEŚ PEWIEN?\n\nTej operacji nie da się cofnąć. Wszystkie Twoje zestawy, pytania i notatki zostaną trwale usunięte.")) {
+    if (!await confirm({ title: 'Usunąć konto?', message: 'Tej operacji nie da się cofnąć. Wszystkie Twoje zestawy, pytania i notatki zostaną trwale usunięte.', confirmLabel: 'Usuń konto trwale' })) {
       return;
     }
 
@@ -89,6 +95,31 @@ const Settings = () => {
             <div>
               <h1 className="text-2xl font-bold">Ustawienia</h1>
               <p className="text-slate-500 text-sm">Zarządzaj swoim kontem</p>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 text-slate-300">
+              {theme === 'dark' ? <Moon className="h-5 w-5 text-blue-400" /> : <Sun className="h-5 w-5 text-amber-500" />}
+              Wygląd
+            </h3>
+            <p className="mb-4 text-sm text-slate-500">Wybierz motyw interfejsu. Ustawienie zostanie zapamiętane na tym urządzeniu.</p>
+            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-950 p-1.5">
+              <button type="button" onClick={() => setTheme('light')} aria-pressed={theme === 'light'} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${theme === 'light' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>
+                <Sun className="h-5 w-5 text-amber-500" /> Jasny
+              </button>
+              <button type="button" onClick={() => setTheme('dark')} aria-pressed={theme === 'dark'} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${theme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>
+                <Moon className="h-5 w-5 text-blue-400" /> Ciemny
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+            <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-slate-300"><Languages className="h-5 w-5 text-cyan-500" />{t('Język')}</h3>
+            <p className="mb-4 text-sm text-slate-500">{t('Wybierz język interfejsu. Polski pozostaje językiem źródłowym pytań.')}</p>
+            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-950 p-1.5">
+              <button type="button" onClick={() => setLanguage('pl')} aria-pressed={language === 'pl'} className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${language === 'pl' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Polski</button>
+              <button type="button" onClick={() => setLanguage('en')} aria-pressed={language === 'en'} className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${language === 'en' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>English</button>
             </div>
           </div>
 

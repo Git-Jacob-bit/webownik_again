@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Pause, Play, CheckCircle, XCircle, AlertCircle, Home, RotateCcw, Coffee, X, Clock, Bot, Sparkles } from 'lucide-react';
 import api from '../api'; // <--- UŻYWAMY NASZEGO NOWEGO PLIKU
 import { toast } from 'react-toastify';
+import { useLanguage } from '../context/LanguageContext';
 
 const StudyMascot = ({ event }) => {
   const isCheering = event.mood === 'cheer';
@@ -83,6 +84,7 @@ const SummaryCelebration = () => {
 const Quiz = () => {
   const { deckId } = useParams();
   const navigate = useNavigate();
+  const { language, localized } = useLanguage();
   // const token = ... <--- USUNIĘTE (nie potrzebujesz tego tutaj, api.js to ogarnia)
 
   // --- STANY ---
@@ -114,10 +116,11 @@ const Quiz = () => {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
+        if (language === 'en') await api.post(`/decks/${deckId}/translate`);
         // ZMIANA: api.get i krótka ścieżka bez headerów
         const res = await api.get(`/quiz/status/${deckId}`);
         
-        setDeckTitle(res.data.deck_title || `Zestaw #${deckId}`);
+        setDeckTitle((language === 'en' && res.data.deck_title_en) || res.data.deck_title || `Zestaw #${deckId}`);
         if (res.data.has_active_session) {
           setSessionData(res.data);
           setTimer(res.data.time_spent || 0);
@@ -138,7 +141,7 @@ const Quiz = () => {
     };
     fetchStatus();
     return () => stopTimer();
-  }, [deckId, navigate]);
+  }, [deckId, navigate, language]);
 
   useEffect(() => {
     if (view !== 'quiz' || isPaused) return undefined;
@@ -194,7 +197,7 @@ const Quiz = () => {
     try {
       // ZMIANA: api.post, bez pełnego URL i bez tokena w headerze
       const res = await api.post(`/quiz/start/${deckId}`, { force_new: forceNew });
-      if (res.data.deck_title) setDeckTitle(res.data.deck_title);
+      if (res.data.deck_title) setDeckTitle((language === 'en' && res.data.deck_title_en) || res.data.deck_title);
       applyProgress(res.data);
       setSummary(null);
       setQuestion(null);
@@ -540,13 +543,13 @@ const Quiz = () => {
                 transition={{ duration: 0.3 }}
                 className="relative mb-4 rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-xl md:p-8 lg:col-start-1 lg:row-start-2 lg:mb-0 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-y-auto lg:p-7"
               >
-                <h2 className="text-2xl font-bold mb-2 leading-tight">{question.content}</h2>
+                <h2 className="text-2xl font-bold mb-2 leading-tight">{localized(question)}</h2>
                 <p className="text-slate-500 text-sm mb-6">Zaznacz poprawne odpowiedzi:</p>
 
                 <div className="mb-6 space-y-3 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
                   {question.answers.map((ans, index) => (
                     <button key={ans.id} onClick={() => toggleAnswer(ans.id)} disabled={feedback !== null} className={getButtonClass(ans.id)}>
-                      <span className="relative z-10 flex min-w-0 items-center gap-3"><span className="hidden h-7 w-7 flex-none items-center justify-center rounded-lg bg-white/5 text-xs font-bold text-slate-500 lg:flex">{index + 1}</span><span>{ans.content}</span></span>
+                      <span className="relative z-10 flex min-w-0 items-center gap-3"><span className="hidden h-7 w-7 flex-none items-center justify-center rounded-lg bg-white/5 text-xs font-bold text-slate-500 lg:flex">{index + 1}</span><span>{localized(ans)}</span></span>
                       {feedback && feedback.correctIds.has(ans.id) && <CheckCircle className="w-5 h-5 text-green-400 min-w-[20px] ml-2" />}
                       {feedback && !feedback.correctIds.has(ans.id) && selectedAnswerIds.has(ans.id) && <XCircle className="w-5 h-5 text-red-400 min-w-[20px] ml-2" />}
                     </button>
@@ -601,7 +604,7 @@ const Quiz = () => {
             <div className="mt-2 flex justify-between text-xs text-slate-500"><span>Poprawne: {summary?.correct_answers ?? 0}</span><span>Błędne: {summary?.incorrect_answers ?? 0}</span></div>
           </div>
 
-          {summary?.difficult_questions?.length > 0 && <div className="mb-6 rounded-2xl border border-white/[0.07] bg-slate-900/80 p-5"><h2 className="mb-3 font-bold">Najtrudniejsze pytania</h2><div className="space-y-2">{summary.difficult_questions.map(item => <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-slate-950/60 p-3 text-sm"><span className="min-w-0 truncate text-slate-300">{item.content}</span><span className="flex-none text-red-400">{item.incorrect} bł.</span></div>)}</div></div>}
+          {summary?.difficult_questions?.length > 0 && <div className="mb-6 rounded-2xl border border-white/[0.07] bg-slate-900/80 p-5"><h2 className="mb-3 font-bold">Najtrudniejsze pytania</h2><div className="space-y-2">{summary.difficult_questions.map(item => <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-slate-950/60 p-3 text-sm"><span className="min-w-0 truncate text-slate-300">{localized(item)}</span><span className="flex-none text-red-400">{item.incorrect} bł.</span></div>)}</div></div>}
 
           <div className="mx-auto flex max-w-md flex-col gap-3 sm:flex-row"><button onClick={() => navigate('/decks')} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 font-bold hover:bg-blue-500"><Home className="h-5 w-5" /> Zestawy</button><button onClick={() => handleStart(true)} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-700 py-3 font-bold text-slate-300 hover:bg-slate-800"><RotateCcw className="h-5 w-5" /> Powtórz</button></div>
         </motion.div>

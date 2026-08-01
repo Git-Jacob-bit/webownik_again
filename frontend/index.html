@@ -1,8 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="pl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script>
+      (() => {
+        const saved = localStorage.getItem('webownik-theme');
+        const theme = saved || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.classList.add(theme);
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
     <title>Webownik</title>
   </head>
   <body>

@@ -14,7 +14,10 @@ import Dashboard from './pages/Dashboard';
 import DeckPreview from './pages/DeckPreview'; // <--- DODAJ IMPORT
 import Settings from './pages/Settings'; // <--- 1. CZY MASZ TEN IMPORT?
 import Quiz from './pages/Quiz';
+import Tutorial from './pages/Tutorial';
+import EmailConfirmed from './pages/EmailConfirmed';
 import api from './api';
+import { useTheme } from './context/ThemeContext';
 
 // --- BRAMKARZ (Private Route) ---
 const PrivateRoute = ({ children }) => {
@@ -33,11 +36,10 @@ const PrivateRoute = ({ children }) => {
 
 function App() {
   const location = useLocation();
+  const { theme } = useTheme();
 
   return (
     <>
-      {/* 2. Tutaj wrzucamy kontener. Dzięki temu powiadomienia działają wszędzie.
-          theme="dark" pasuje do Twojego designu. */}
       <ToastContainer
         position="top-right"
         autoClose={3000}
@@ -48,7 +50,7 @@ function App() {
         pauseOnFocusLoss
         draggable
         pauseOnHover
-        theme="dark"
+        theme={theme}
       />
 
       <AnimatePresence mode="wait">
@@ -58,10 +60,16 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/email-confirmed" element={<EmailConfirmed />} />
 
           <Route
             path="/dashboard"
             element={<Navigate to="/today" replace />}
+          />
+
+          <Route
+            path="/tutorial"
+            element={<PrivateRoute><Tutorial /></PrivateRoute>}
           />
 
           <Route

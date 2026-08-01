@@ -17,7 +17,7 @@ function ForgotPassword() {
     try {
       // ZMIANA: Używamy api.post i krótkiej ścieżki.
       // Adres serwera (localhost lub IP) zostanie dodany automatycznie z api.js
-      await api.post(`/auth/forgot-password?email=${email}`);
+      await api.post('/auth/forgot-password', { email });
       
       setStatus({ 
         type: 'success', 

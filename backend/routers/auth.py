@@ -6,7 +6,7 @@ import secrets
 import httpx
 from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
 
 from config import settings
@@ -21,6 +21,10 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 ACCESS_COOKIE = "webownik_access"
 REFRESH_COOKIE = "webownik_refresh"
 CSRF_COOKIE = "webownik_csrf"
+
+
+def _frontend_url(path: str) -> str:
+    return f"{settings.domain.rstrip('/')}/{path.lstrip('/')}"
 
 
 def _set_session_cookies(response: Response, result: dict) -> None:
@@ -132,7 +136,7 @@ async def get_current_user(
 @router.post("/register")
 def register_user(user_data: UserCreate, request: Request, session: Session = Depends(get_session)):
     _verify_turnstile(user_data.turnstile_token, request)
-    redirect = quote(f"{settings.domain}/login", safe='')
+    redirect = quote(_frontend_url("/email-confirmed"), safe='')
     result = _auth_request("POST", f"/signup?redirect_to={redirect}", json={
         "email": user_data.email,
         "password": user_data.password,
@@ -161,6 +165,8 @@ def login_for_access_token(
             "password": form_data.password,
         })
     except HTTPException as exc:
+        if "email not confirmed" in str(exc.detail).lower():
+            raise HTTPException(status_code=403, detail="Najpierw potwierdź adres e-mail") from exc
         raise HTTPException(status_code=401, detail="Błędny e-mail lub hasło") from exc
     if result.get("user"):
         _upsert_profile(session, result["user"])
@@ -185,8 +191,8 @@ def refresh_session(response: Response, data: RefreshRequest | None = None, webo
 
 
 class PasswordChange(BaseModel):
-    old_password: str
-    new_password: str = Field(min_length=8)
+    old_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 @router.post("/change-password")
@@ -204,16 +210,20 @@ def change_password(
     return {"message": "Hasło zostało zmienione"}
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
 @router.post("/forgot-password")
-def forgot_password(email: str):
-    redirect = quote(f"{settings.domain}/reset-password", safe='')
-    _auth_request("POST", f"/recover?redirect_to={redirect}", json={"email": email})
+def forgot_password(data: ForgotPasswordRequest):
+    redirect = quote(_frontend_url("/reset-password"), safe='')
+    _auth_request("POST", f"/recover?redirect_to={redirect}", json={"email": str(data.email)})
     return {"message": "Jeśli e-mail istnieje, instrukcje zostały wysłane."}
 
 
 class PasswordReset(BaseModel):
-    access_token: str
-    new_password: str = Field(min_length=8)
+    access_token: str = Field(min_length=20, max_length=4096)
+    new_password: str = Field(min_length=8, max_length=128)
 
 
 @router.post("/reset-password-confirm")

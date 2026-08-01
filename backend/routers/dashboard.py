@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlmodel import Session, select
 from typing import List
 
@@ -6,6 +7,7 @@ from database import get_session
 from models import User, Todo, Note, Link
 from schemas import TodoCreate, TodoRead, NoteCreate, NoteRead, LinkCreate, LinkRead
 from routers.auth import get_current_user # Importujemy funkcję autoryzacji
+from limits import MAX_LINKS_PER_USER, MAX_NOTES_PER_USER, MAX_TODOS_PER_USER
 
 router = APIRouter(tags=["dashboard"])
 
@@ -17,6 +19,9 @@ def get_todos(user: User = Depends(get_current_user)):
 
 @router.post("/todos", response_model=TodoRead)
 def create_todo(todo: TodoCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    count = db.exec(select(func.count(Todo.id)).where(Todo.user_id == user.id)).one()
+    if count >= MAX_TODOS_PER_USER:
+        raise HTTPException(status_code=409, detail=f"Limit zadań wynosi {MAX_TODOS_PER_USER}")
     new_todo = Todo(text=todo.text, done=todo.done, user_id=user.id)
     db.add(new_todo)
     db.commit()
@@ -54,6 +59,9 @@ def get_notes(user: User = Depends(get_current_user)):
 
 @router.post("/notes", response_model=NoteRead)
 def create_note(note: NoteCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    count = db.exec(select(func.count(Note.id)).where(Note.user_id == user.id)).one()
+    if count >= MAX_NOTES_PER_USER:
+        raise HTTPException(status_code=409, detail=f"Limit notatek wynosi {MAX_NOTES_PER_USER}")
     new_note = Note(title=note.title, content=note.content, user_id=user.id)
     db.add(new_note)
     db.commit()
@@ -68,7 +76,10 @@ def get_links(user: User = Depends(get_current_user)):
 
 @router.post("/links", response_model=LinkRead)
 def create_link(link: LinkCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    new_link = Link(title=link.title, url=link.url, category=link.category, user_id=user.id)
+    count = db.exec(select(func.count(Link.id)).where(Link.user_id == user.id)).one()
+    if count >= MAX_LINKS_PER_USER:
+        raise HTTPException(status_code=409, detail=f"Limit linków wynosi {MAX_LINKS_PER_USER}")
+    new_link = Link(title=link.title, url=str(link.url), category=link.category, user_id=user.id)
     db.add(new_link)
     db.commit()
     db.refresh(new_link)
@@ -104,5 +115,15 @@ def delete_note(
     if not note:
         raise HTTPException(status_code=404, detail="Notatka nie znaleziona")
     db.delete(note)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/links/{link_id}")
+def delete_link(link_id: int, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    link = db.exec(select(Link).where(Link.id == link_id, Link.user_id == user.id)).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link nie znaleziony")
+    db.delete(link)
     db.commit()
     return {"ok": True}

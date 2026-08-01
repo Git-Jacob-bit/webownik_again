@@ -6,8 +6,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
 import { 
   ArrowLeft, Plus, Trash2, Save, X, 
-  CheckCircle2, Circle, Edit3, Loader2 
+  CheckCircle2, Circle, Edit3, Loader2, Languages
 } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
 
 // --- USUNIĘTO RĘCZNĄ KONFIGURACJĘ AXIOSA ---
 // Teraz api.js zajmuje się adresem URL i tokenami automatycznie.
@@ -15,10 +17,13 @@ import {
 const DeckPreview = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { language, localized, localizedTitle, t } = useLanguage();
+  const confirm = useConfirm();
 
   const [deck, setDeck] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [translationStarting, setTranslationStarting] = useState(false);
 
   // Stan edycji
   const [editingId, setEditingId] = useState(null);
@@ -30,7 +35,13 @@ const DeckPreview = () => {
 
   useEffect(() => {
     fetchData();
-  }, [id]);
+  }, [id, language]);
+
+  useEffect(() => {
+    if (!['queued', 'processing'].includes(deck?.translation_status)) return undefined;
+    const timer = window.setInterval(fetchData, 1500);
+    return () => window.clearInterval(timer);
+  }, [deck?.translation_status, id, language]);
 
   const fetchData = async () => {
     try {
@@ -57,6 +68,18 @@ const DeckPreview = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startTranslation = async () => {
+    setTranslationStarting(true);
+    try {
+      await api.post(`/decks/${id}/translate`);
+      await fetchData();
+    } catch (err) {
+      toast.error(language === 'en' ? 'Could not start translation.' : 'Nie udało się uruchomić tłumaczenia.');
+    } finally {
+      setTranslationStarting(false);
     }
   };
 
@@ -95,7 +118,7 @@ const DeckPreview = () => {
   };
 
   const deleteQuestion = async (qId) => {
-    if (!window.confirm("Na pewno usunąć to pytanie?")) return;
+    if (!await confirm({ title: 'Usunąć pytanie?', message: 'Pytanie wraz ze wszystkimi odpowiedziami zostanie trwale usunięte.' })) return;
     try {
       await api.delete(`/decks/question/${qId}`);
       setQuestions(prev => prev.filter(q => q.id !== qId));
@@ -139,7 +162,7 @@ const DeckPreview = () => {
             </button>
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                {deck ? deck.title : "Błąd ładowania"}
+                {deck ? localizedTitle(deck) : "Błąd ładowania"}
               </h1>
               <p className="text-slate-500 text-sm">Edycja pytań i odpowiedzi</p>
             </div>
@@ -156,6 +179,19 @@ const DeckPreview = () => {
         </div>
 
         <div className="max-w-4xl mx-auto space-y-6 pb-20">
+          <div className="rounded-2xl border border-white/[0.07] bg-slate-900/80 p-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-300"><Languages className="h-5 w-5" /></span>
+              <div>
+                <p className="font-semibold">{deck.translation_status === 'ready' ? t('Tłumaczenie gotowe') : deck.translation_status === 'failed' ? t('Błąd tłumaczenia') : deck.translation_status === 'processing' ? `${t('Tłumaczenie...')} ${deck.translation_total ? Math.round((deck.translation_completed / deck.translation_total) * 100) : 0}%` : deck.translation_status === 'queued' ? t('W kolejce do tłumaczenia') : t('Nieprzetłumaczony')}</p>
+                <p className="text-sm text-slate-500">PL → EN · {deck.translation_completed || 0}/{deck.translation_total || 0}</p>
+              </div>
+              </div>
+              {!['ready', 'queued', 'processing'].includes(deck.translation_status) && <button onClick={startTranslation} disabled={translationStarting} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60">{translationStarting && <Loader2 className="h-4 w-4 animate-spin" />}{t(deck.translation_status === 'failed' ? 'Ponów tłumaczenie' : 'Uruchom tłumaczenie')}</button>}
+            </div>
+            {['queued', 'processing'].includes(deck.translation_status) && <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800"><div className={`h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-[width] duration-500 ${deck.translation_status === 'queued' ? 'animate-pulse' : ''}`} style={{ width: `${deck.translation_status === 'queued' ? 4 : deck.translation_total ? Math.max(2, Math.round((deck.translation_completed / deck.translation_total) * 100)) : 2}%` }} /></div>}
+          </div>
           <AnimatePresence>
             {isAdding && (
               <motion.div 
@@ -218,14 +254,14 @@ const DeckPreview = () => {
               ) : (
                 <div>
                   <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-medium text-white pr-4"><span className="text-slate-500 mr-2">#{index + 1}</span>{q.content}</h3>
+                    <h3 className="text-xl font-medium text-white pr-4"><span className="text-slate-500 mr-2">#{index + 1}</span>{localized(q)}</h3>
                     <button onClick={() => startEdit(q)} className="text-slate-500 hover:text-blue-400 p-2 hover:bg-blue-500/10 rounded-lg transition-all"><Edit3 className="h-5 w-5" /></button>
                   </div>
                   <div className="space-y-2 pl-4 border-l-2 border-slate-700">
                     {q.answers.map(ans => (
                       <div key={ans.id} className={`flex items-center gap-3 p-2 rounded-lg ${ans.is_correct ? 'bg-green-500/10 text-green-300' : 'text-slate-400'}`}>
                         {ans.is_correct ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <Circle className="h-4 w-4 shrink-0 opacity-50" />}
-                        <span>{ans.content}</span>
+                        <span>{localized(ans)}</span>
                       </div>
                     ))}
                     {q.answers.length === 0 && <span className="text-slate-600 text-sm italic">Brak odpowiedzi</span>}

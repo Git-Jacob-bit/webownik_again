@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Lock } from 'lucide-react';
 import api from '../api';
@@ -13,20 +13,26 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const accessToken = useMemo(() => {
+  const [link] = useState(() => {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    return hash.get('access_token');
-  }, []);
+    const query = new URLSearchParams(window.location.search);
+    const result = {
+      accessToken: hash.get('access_token') || query.get('access_token'),
+      error: hash.get('error_description') || query.get('error_description'),
+    };
+    window.history.replaceState({}, document.title, window.location.pathname);
+    return result;
+  });
 
   const submit = async (event) => {
     event.preventDefault();
-    if (!accessToken) return setError('Link resetujący jest nieprawidłowy lub wygasł.');
+    if (!link.accessToken) return setError(link.error || 'Link resetujący jest nieprawidłowy lub wygasł.');
     if (password !== confirmation) return setError('Hasła nie są identyczne.');
     setLoading(true);
     setError('');
     try {
       await api.post('/auth/reset-password-confirm', {
-        access_token: accessToken,
+        access_token: link.accessToken,
         new_password: password,
       });
       toast.success('Hasło zostało zmienione.');
@@ -46,7 +52,7 @@ const ResetPassword = () => {
         </Link>
         <h1 className="text-2xl font-bold mb-2">Ustaw nowe hasło</h1>
         <p className="text-slate-400 mb-6">Hasło musi mieć co najmniej 8 znaków.</p>
-        <InlineMessage message={error} />
+        <InlineMessage message={error || link.error || (!link.accessToken ? 'Link resetujący jest nieprawidłowy lub wygasł.' : '')} />
         <form onSubmit={submit} className="space-y-4">
           <div className="relative">
             <Lock className="absolute left-3 top-3.5 h-5 w-5 text-slate-500" />
