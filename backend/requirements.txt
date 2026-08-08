@@ -10,6 +10,6 @@ httpx==0.28.1
 argostranslate==1.11.0
 ctranslate2==4.8.1
 minisbd==0.9.5
-packaging==26.2
+packaging==26.3
 sacremoses==0.1.1
 sentencepiece==0.2.2
