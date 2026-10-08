@@ -1,6 +1,5 @@
 import json
 import random
-from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -8,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 
 from database import get_session
-from models import Answer, Deck, Question, QuizSession, User
+from models import Answer, Deck, Question, QuizSession, User, utc_now
 from routers.auth import get_current_user
 from limits import MAX_ANSWERS_PER_QUESTION
 
@@ -54,7 +53,7 @@ def ensure_progress_state(quiz_session: QuizSession) -> bool:
 
 
 def update_session_time(quiz_session: QuizSession) -> None:
-    now = datetime.utcnow()
+    now = utc_now()
     if not quiz_session.is_paused and quiz_session.last_activity:
         delta = max(0, int((now - quiz_session.last_activity).total_seconds()))
         quiz_session.total_time_seconds += delta
@@ -114,6 +113,46 @@ def get_active_session(db: Session, user_id, deck_id: int, lock: bool = False):
     return db.exec(statement).first()
 
 
+def _active_deck_sessions(db: Session, deck_id: int) -> list[QuizSession]:
+    statement = select(QuizSession).where(
+        QuizSession.deck_id == deck_id,
+        QuizSession.is_active == True,
+    ).with_for_update()
+    return list(db.exec(statement).all())
+
+
+def add_question_to_sessions(db: Session, deck_id: int, question_id: int) -> None:
+    """Nowe pytanie trafia na koniec kolejki trwających sesji. Nie commituje."""
+    for quiz_session in _active_deck_sessions(db, deck_id):
+        ensure_progress_state(quiz_session)
+        stats = load_stats(quiz_session)
+        stats[str(question_id)] = {"streak": 0, "correct": 0, "incorrect": 0, "mastered": False}
+        save_stats(quiz_session, stats)
+        quiz_session.queue_str = list_to_queue(queue_to_list(quiz_session.queue_str) + [question_id])
+        quiz_session.initial_question_count += 1
+        db.add(quiz_session)
+
+
+def remove_question_from_sessions(db: Session, deck_id: int, question_id: int) -> None:
+    """Usunięte pytanie znika z kolejki i postępu trwających sesji. Nie commituje."""
+    for quiz_session in _active_deck_sessions(db, deck_id):
+        ensure_progress_state(quiz_session)
+        stats = load_stats(quiz_session)
+        if stats.pop(str(question_id), None) is not None:
+            quiz_session.initial_question_count = max(0, quiz_session.initial_question_count - 1)
+        save_stats(quiz_session, stats)
+        queue = [value for value in queue_to_list(quiz_session.queue_str) if value != question_id]
+        quiz_session.queue_str = list_to_queue(queue)
+        if not stats:
+            db.delete(quiz_session)
+            continue
+        if not queue:
+            quiz_session.is_active = False
+            quiz_session.is_paused = True
+            quiz_session.completed_at = utc_now()
+        db.add(quiz_session)
+
+
 def schedule_later(queue: list[int], question_id: int) -> None:
     if not queue:
         queue.append(question_id)
@@ -138,7 +177,7 @@ def check_quiz_status(
         # Powrót do widoku po odświeżeniu lub zamknięciu zawsze jest bezpiecznie wstrzymany.
         if not quiz_session.is_paused:
             quiz_session.is_paused = True
-            quiz_session.last_activity = datetime.utcnow()
+            quiz_session.last_activity = utc_now()
             session.add(quiz_session)
             session.commit()
         elif migrated:
@@ -178,7 +217,7 @@ def start_quiz(
         if ensure_progress_state(existing):
             session.add(existing)
         existing.is_paused = False
-        existing.last_activity = datetime.utcnow()
+        existing.last_activity = utc_now()
         session.add(existing)
         session.commit()
         return {"message": "Session continued", "session_id": existing.id, "deck_title": deck.title, "deck_title_en": deck.title_en, **progress_payload(existing)}
@@ -207,7 +246,7 @@ def start_quiz(
         correct_answers=0,
         incorrect_answers=0,
         total_time_seconds=0,
-        last_activity=datetime.utcnow(),
+        last_activity=utc_now(),
     )
     session.add(new_session)
     session.commit()
@@ -233,7 +272,7 @@ def resume_quiz(deck_id: int, session: Session = Depends(get_session), current_u
     quiz_session = get_active_session(session, current_user.id, deck_id, lock=True)
     if not quiz_session:
         raise HTTPException(status_code=404, detail="Brak sesji")
-    quiz_session.last_activity = datetime.utcnow()
+    quiz_session.last_activity = utc_now()
     quiz_session.is_paused = False
     session.add(quiz_session)
     session.commit()
@@ -330,7 +369,7 @@ def submit_answer(
     if finished:
         quiz_session.is_active = False
         quiz_session.is_paused = True
-        quiz_session.completed_at = datetime.utcnow()
+        quiz_session.completed_at = utc_now()
     session.add(quiz_session)
     session.commit()
 

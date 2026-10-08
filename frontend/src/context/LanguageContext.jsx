@@ -47,6 +47,7 @@ const english = {
   'Pomoc i aktualizacje': 'Help and updates', 'Pomoc': 'Help', 'Wyślij feedback': 'Send feedback', 'Co nowego': "What's new",
   'Rodzaj zgłoszenia': 'Feedback type', 'Błąd': 'Bug', 'Pomysł': 'Idea', 'Inne': 'Other', 'Tytuł': 'Title', 'Opis': 'Description',
   'Krótko opisz temat...': 'Briefly describe the topic...', 'Opisz, co się wydarzyło albo co warto dodać...': 'Describe what happened or what would be worth adding...',
+  'Zgłoszenie trafi do publicznego repozytorium na GitHubie. Nie wpisuj danych osobowych, haseł ani treści, których nie chcesz publikować.': 'Your report will be posted to a public GitHub repository. Do not include personal data, passwords or anything you do not want published.',
   'Dołącz aktualną podstronę i informacje o przeglądarce. Adres e-mail nie będzie publikowany.': 'Include the current page and browser information. Your email address will not be published.',
   'Feedback został wysłany. Dziękujemy!': 'Feedback sent. Thank you!', 'Nie udało się wysłać feedbacku.': 'Could not send feedback.',
   'Utworzono zgłoszenie': 'Issue created', 'Nie udało się pobrać changelogu.': 'Could not load the changelog.',

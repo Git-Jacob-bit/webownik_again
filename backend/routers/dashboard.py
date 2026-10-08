@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 from sqlmodel import Session, select
 from typing import List
 
 from database import get_session
-from models import User, Todo, Note, Link
+from models import Deck, Link, Note, Question, QuizSession, Todo, User, utc_now
 from schemas import TodoCreate, TodoRead, NoteCreate, NoteRead, LinkCreate, LinkRead
 from routers.auth import get_current_user # Importujemy funkcję autoryzacji
 from limits import MAX_LINKS_PER_USER, MAX_NOTES_PER_USER, MAX_TODOS_PER_USER
@@ -14,8 +16,8 @@ router = APIRouter(tags=["dashboard"])
 # --- TODOS (ZADANIA) ---
 
 @router.get("/todos", response_model=List[TodoRead])
-def get_todos(user: User = Depends(get_current_user)):
-    return user.todos
+def get_todos(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    return db.exec(select(Todo).where(Todo.user_id == user.id).order_by(Todo.id)).all()
 
 @router.post("/todos", response_model=TodoRead)
 def create_todo(todo: TodoCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
@@ -54,8 +56,8 @@ def delete_todo(todo_id: int, db: Session = Depends(get_session), user: User = D
 # --- NOTES (NOTATKI) ---
 
 @router.get("/notes", response_model=List[NoteRead])
-def get_notes(user: User = Depends(get_current_user)):
-    return user.notes
+def get_notes(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    return db.exec(select(Note).where(Note.user_id == user.id).order_by(Note.created_at.desc(), Note.id.desc())).all()
 
 @router.post("/notes", response_model=NoteRead)
 def create_note(note: NoteCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
@@ -71,8 +73,8 @@ def create_note(note: NoteCreate, db: Session = Depends(get_session), user: User
 # --- LINKS (LINKI) ---
 
 @router.get("/links", response_model=List[LinkRead])
-def get_links(user: User = Depends(get_current_user)):
-    return user.links
+def get_links(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    return db.exec(select(Link).where(Link.user_id == user.id).order_by(Link.category, Link.id)).all()
 
 @router.post("/links", response_model=LinkRead)
 def create_link(link: LinkCreate, db: Session = Depends(get_session), user: User = Depends(get_current_user)):
@@ -127,3 +129,60 @@ def delete_link(link_id: int, db: Session = Depends(get_session), user: User = D
     db.delete(link)
     db.commit()
     return {"ok": True}
+
+
+# --- EKSPORT DANYCH (RODO, art. 20) ---
+
+@router.get("/account/export")
+def export_my_data(db: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    decks = db.exec(
+        select(Deck)
+        .where(Deck.user_id == user.id)
+        .order_by(Deck.id)
+        .options(selectinload(Deck.questions).selectinload(Question.answers))
+    ).all()
+    sessions = db.exec(select(QuizSession).where(QuizSession.user_id == user.id).order_by(QuizSession.id)).all()
+    payload = {
+        "exported_at": utc_now().isoformat() + "Z",
+        "user": {"id": str(user.id), "email": user.email},
+        "decks": [
+            {
+                "title": deck.title,
+                "title_en": deck.title_en,
+                "questions": [
+                    {
+                        "content": question.content,
+                        "content_en": question.content_en,
+                        "answers": [
+                            {"content": answer.content, "content_en": answer.content_en, "is_correct": answer.is_correct}
+                            for answer in sorted(question.answers, key=lambda answer: answer.id)
+                        ],
+                    }
+                    for question in sorted(deck.questions, key=lambda question: question.id)
+                ],
+            }
+            for deck in decks
+        ],
+        "quiz_sessions": [
+            {
+                "deck_id": quiz_session.deck_id,
+                "created_at": quiz_session.created_at.isoformat(),
+                "completed_at": quiz_session.completed_at.isoformat() if quiz_session.completed_at else None,
+                "total_answers": quiz_session.total_answers,
+                "correct_answers": quiz_session.correct_answers,
+                "incorrect_answers": quiz_session.incorrect_answers,
+                "total_time_seconds": quiz_session.total_time_seconds,
+            }
+            for quiz_session in sessions
+        ],
+        "todos": [{"text": todo.text, "done": todo.done} for todo in get_todos(db, user)],
+        "notes": [
+            {"title": note.title, "content": note.content, "created_at": note.created_at.isoformat()}
+            for note in get_notes(db, user)
+        ],
+        "links": [{"title": link.title, "url": link.url, "category": link.category} for link in get_links(db, user)],
+    }
+    return JSONResponse(
+        payload,
+        headers={"Content-Disposition": 'attachment; filename="webownik-export.json"'},
+    )

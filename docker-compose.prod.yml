@@ -7,8 +7,12 @@ services:
     restart: unless-stopped
     init: true
     networks:
-      - internal
-      - supabase
+      internal:
+        # Alias istnieje tylko w sieci internal, więc nginx łączy się zawsze przez nią,
+        # a backend może ufać CF-Connecting-IP wyłącznie z tej podsieci.
+        aliases:
+          - webownik-api
+      supabase: {}
     expose:
       - "8000"
     security_opt:
@@ -65,6 +69,9 @@ services:
 networks:
   internal:
     internal: true
+    ipam:
+      config:
+        - subnet: ${WEBOWNIK_INTERNAL_SUBNET:-172.31.250.0/24}
   supabase:
     external: true
     name: ${SUPABASE_NETWORK:-supabase_default}

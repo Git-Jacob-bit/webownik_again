@@ -1,3 +1,4 @@
+import re
 import threading
 import time
 from collections import defaultdict, deque
@@ -36,6 +37,17 @@ def _github_headers(authenticated: bool = False) -> dict[str, str]:
     if authenticated and settings.github_token:
         headers["Authorization"] = f"Bearer {settings.github_token}"
     return headers
+
+
+def _neutralize_markdown(text: str) -> str:
+    """Treść trafia do publicznego issue: bez obrazków (pikseli śledzących) i bez @wzmianek."""
+    text = re.sub(r"!\[", "[", text)
+    text = re.sub(r"<\s*img\b", "&lt;img", text, flags=re.IGNORECASE)
+    return re.sub(r"@(?=[A-Za-z0-9-])", "@\u200b", text)
+
+
+def _inline_code(value: str) -> str:
+    return "`" + value.replace("`", "'").replace("\n", " ") + "`"
 
 
 def _repository() -> str:
@@ -99,10 +111,10 @@ def create_feedback(payload: FeedbackCreate, current_user: User = Depends(get_cu
     prefixes = {"bug": "Bug", "feature": "Pomysł", "other": "Feedback"}
     technical = []
     if payload.page:
-        technical.append(f"- Strona: `{payload.page}`")
+        technical.append(f"- Strona: {_inline_code(payload.page)}")
     if payload.browser:
-        technical.append(f"- Przeglądarka: `{payload.browser}`")
-    body = payload.description
+        technical.append(f"- Przeglądarka: {_inline_code(payload.browser)}")
+    body = _neutralize_markdown(payload.description)
     if technical:
         body += "\n\n---\nDane techniczne przekazane przez użytkownika:\n" + "\n".join(technical)
     body += "\n\n_Wysłano z formularza feedbacku Webownika._"
@@ -111,7 +123,7 @@ def create_feedback(payload: FeedbackCreate, current_user: User = Depends(get_cu
         response = httpx.post(
             f"https://api.github.com/repos/{_repository()}/issues",
             headers=_github_headers(authenticated=True),
-            json={"title": f"[{prefixes[payload.category]}] {payload.title}", "body": body},
+            json={"title": f"[{prefixes[payload.category]}] {_neutralize_markdown(payload.title)}", "body": body},
             timeout=10,
         )
         response.raise_for_status()

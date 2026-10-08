@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/AnimatedPage';
 import api from '../api';
 import { toast } from 'react-toastify';
-import { ArrowLeft, Lock, Save, Loader2, User, Mail, Trash2, ShieldAlert, Moon, Sun, Languages } from 'lucide-react';
+import { ArrowLeft, Lock, Save, Loader2, User, Mail, Trash2, ShieldAlert, Moon, Sun, Languages, Download } from 'lucide-react';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -16,6 +16,7 @@ const Settings = () => {
   const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [userInfo, setUserInfo] = useState({ id: '', email: '' });
+  const [deletePassword, setDeletePassword] = useState('');
   
   // Stan do formularza hasła
   const [formData, setFormData] = useState({
@@ -56,14 +57,29 @@ const Settings = () => {
     }
   };
 
+  const handleExport = async () => {
+    try {
+      const res = await api.get('/account/export', { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'webownik-export.json';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error("Nie udało się pobrać danych.");
+    }
+  };
+
   // 3. Obsługa usuwania konta
-  const handleDeleteAccount = async () => {
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
     if (!await confirm({ title: 'Usunąć konto?', message: 'Tej operacji nie da się cofnąć. Wszystkie Twoje zestawy, pytania i notatki zostaną trwale usunięte.', confirmLabel: 'Usuń konto trwale' })) {
       return;
     }
 
     try {
-      await api.delete('/auth/me');
+      await api.delete('/auth/me', { data: { password: deletePassword } });
       
       toast.info("Twoje konto zostało usunięte. Żegnaj! 👋");
       
@@ -72,7 +88,8 @@ const Settings = () => {
       
     } catch (err) {
       console.error(err);
-      toast.error("Wystąpił błąd podczas usuwania konta.");
+      const detail = err.response?.data?.detail;
+      toast.error(typeof detail === 'string' ? detail : "Wystąpił błąd podczas usuwania konta.");
     }
   };
 
@@ -186,7 +203,7 @@ const Settings = () => {
                   value={formData.new_password}
                   onChange={handleChange}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 focus:border-blue-500 outline-none transition-all"
-                  placeholder="Min. 4 znaki"
+                  placeholder="Min. 8 znaków: małe i wielkie litery, cyfra"
                   minLength={8}
                   required
                 />
@@ -203,6 +220,20 @@ const Settings = () => {
             </form>
           </div>
 
+          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 text-slate-300">
+              <Download className="h-5 w-5" /> Twoje dane
+            </h3>
+            <p className="mb-4 text-sm text-slate-500">Pobierz kopię swoich zestawów, notatek, zadań, linków i historii nauki w formacie JSON.</p>
+            <button
+              type="button"
+              onClick={handleExport}
+              className="w-full border border-slate-700 text-slate-300 hover:bg-slate-800 font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2"
+            >
+              <Download className="h-5 w-5" /> Pobierz moje dane
+            </button>
+          </div>
+
           {/* --- SEKCJA 3: STREFA NIEBEZPIECZNA --- */}
           <div className="border border-red-900/30 bg-red-950/10 p-6 rounded-2xl">
             <h3 className="text-red-500 font-bold mb-2 flex items-center gap-2">
@@ -211,13 +242,25 @@ const Settings = () => {
             <p className="text-red-400/70 text-sm mb-4">
               Usunięcie konta jest nieodwracalne. Stracisz dostęp do wszystkich swoich zestawów i notatek.
             </p>
-            <button 
-              onClick={handleDeleteAccount}
-              className="w-full border border-red-900 text-red-500 hover:bg-red-900/20 font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2"
-            >
-              <Trash2 className="h-5 w-5" />
-              Usuń konto trwale
-            </button>
+            <form onSubmit={handleDeleteAccount} className="space-y-3">
+              <label className="block text-red-400/80 text-sm font-medium">Potwierdź obecnym hasłem</label>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={e => setDeletePassword(e.target.value)}
+                autoComplete="current-password"
+                className="w-full bg-slate-950 border border-red-900/40 rounded-lg p-3 focus:border-red-500 outline-none transition-all"
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="submit"
+                className="w-full border border-red-900 text-red-500 hover:bg-red-900/20 font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Trash2 className="h-5 w-5" />
+                Usuń konto trwale
+              </button>
+            </form>
           </div>
 
         </div>
