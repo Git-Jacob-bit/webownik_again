@@ -1,7 +1,12 @@
 from typing import List, Optional
 from sqlmodel import Field, SQLModel, Relationship
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
+
+
+def utc_now() -> datetime:
+    """Naiwny czas UTC — kolumny w bazie to `timestamp without time zone`."""
+    return datetime.now(UTC).replace(tzinfo=None)
 
 # --- UŻYTKOWNIK ---
 class User(SQLModel, table=True):
@@ -26,7 +31,7 @@ class Deck(SQLModel, table=True):
     translation_completed: int = Field(default=0)
     translation_total: int = Field(default=0)
     description: Optional[str] = None
-    user_id: UUID = Field(foreign_key="user.id")
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE")
     
     # Relacje
     user: Optional[User] = Relationship(back_populates="decks")
@@ -38,7 +43,7 @@ class Question(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     content: str
     content_en: Optional[str] = None
-    deck_id: int = Field(foreign_key="deck.id")
+    deck_id: int = Field(foreign_key="deck.id", ondelete="CASCADE")
     
     # Relacje
     deck: Optional[Deck] = Relationship(back_populates="questions")
@@ -50,7 +55,7 @@ class Answer(SQLModel, table=True):
     content: str
     content_en: Optional[str] = None
     is_correct: bool = Field(default=False)
-    question_id: int = Field(foreign_key="question.id")
+    question_id: int = Field(foreign_key="question.id", ondelete="CASCADE")
     
     # Relacje
     question: Optional[Question] = Relationship(back_populates="answers")
@@ -59,8 +64,8 @@ class Answer(SQLModel, table=True):
 class QuizSession(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     
-    user_id: UUID = Field(foreign_key="user.id")
-    deck_id: int = Field(foreign_key="deck.id")
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE")
+    deck_id: int = Field(foreign_key="deck.id", ondelete="CASCADE")
     
     user: User = Relationship(back_populates="sessions")
     deck: Deck = Relationship(back_populates="sessions")
@@ -75,9 +80,9 @@ class QuizSession(SQLModel, table=True):
     incorrect_answers: int = Field(default=0)
     completed_at: Optional[datetime] = Field(default=None)
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now)
     total_time_seconds: int = Field(default=0)  # Ile czasu już upłynęło
-    last_activity: datetime = Field(default_factory=datetime.utcnow) # Kiedy ostatnio coś kliknął
+    last_activity: datetime = Field(default_factory=utc_now) # Kiedy ostatnio coś kliknął
     is_paused: bool = Field(default=False)      # Czy zastopował czas
 
 # --- ZADANIE (TODO) ---
@@ -86,7 +91,7 @@ class Todo(SQLModel, table=True):
     text: str  # Treść zadania
     done: bool = Field(default=False)
     
-    user_id: UUID = Field(foreign_key="user.id")
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE")
     user: Optional[User] = Relationship(back_populates="todos")
 
 # --- NOTATKA ---
@@ -95,8 +100,8 @@ class Note(SQLModel, table=True):
     title: str
     content: str
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    user_id: UUID = Field(foreign_key="user.id")
+    created_at: datetime = Field(default_factory=utc_now)
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE")
     user: Optional[User] = Relationship(back_populates="notes")
 
 # --- LINK (ZAKŁADKA) ---
@@ -106,5 +111,5 @@ class Link(SQLModel, table=True):
     url: str
     category: str = Field(default="Inne")
     
-    user_id: UUID = Field(foreign_key="user.id")
+    user_id: UUID = Field(foreign_key="user.id", ondelete="CASCADE")
     user: Optional[User] = Relationship(back_populates="links")

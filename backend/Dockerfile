@@ -13,10 +13,9 @@ RUN python -m venv "$VIRTUAL_ENV" \
     && rm -rf /var/lib/apt/lists/*
 
 # Kopiujemy requirements i instalujemy paczki
-COPY requirements.txt .
-RUN grep -v '^argostranslate==' requirements.txt > /tmp/requirements-without-argos.txt \
-    && pip install --no-cache-dir --requirement /tmp/requirements-without-argos.txt \
-    && pip install --no-cache-dir --no-deps argostranslate==1.11.0 \
+COPY requirements.txt requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes --requirement requirements.lock \
+    && pip install --no-cache-dir --no-deps "$(grep '^argostranslate==' requirements.txt)" \
     && python -c "from pathlib import Path; p=Path('/opt/venv/lib/python3.11/site-packages/argostranslate/sbd.py'); s=p.read_text(); s=s.replace('import stanza\n', 'try:\n    import stanza\nexcept ImportError:\n    stanza = None\n'); p.write_text(s)"
 
 # Jedyny model językowy aplikacji: polski oryginał -> angielska kopia.

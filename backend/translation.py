@@ -133,6 +133,23 @@ def _translation_worker() -> None:
                 _queued_decks.discard(deck_id)
 
 
+def reset_interrupted_translations() -> int:
+    """The queue lives in memory, so jobs from a previous process are lost on restart."""
+    from sqlmodel import Session, col, update
+
+    from database import engine
+    from models import Deck
+
+    with Session(engine) as session:
+        result = session.exec(
+            update(Deck)
+            .where(col(Deck.translation_status).in_(("queued", "processing")))
+            .values(translation_status="pending")
+        )
+        session.commit()
+        return result.rowcount or 0
+
+
 def enqueue_deck_translation(deck_id: int, user_id) -> str:
     """Deduplicate jobs and schedule them round-robin across users."""
     global _worker_started

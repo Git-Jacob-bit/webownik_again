@@ -34,6 +34,8 @@ CORS_ORIGINS=https://webownik.example.pl
 ALLOWED_HOSTS=webownik.example.pl,api
 COOKIE_SECURE=true
 COOKIE_SAMESITE=strict
+TRUSTED_PROXY_CIDRS=172.31.250.0/24
+WEBOWNIK_INTERNAL_SUBNET=172.31.250.0/24
 
 DATABASE_URL=postgresql://webownik_app:BARDZO_MOCNE_HASLO@db:5432/postgres
 SUPABASE_URL=http://kong:8000
@@ -58,6 +60,7 @@ Wymagania:
 - `SUPABASE_SECRET_KEY` nigdy nie może trafić do frontendu.
 - `GITHUB_TOKEN` powinien być fine-grained, ograniczony do jednego repozytorium i uprawnienia `Issues: Read and write`. Docelowo zastąp go GitHub App.
 - Nazwy zewnętrznych sieci sprawdź poleceniem `docker network ls`.
+- `WEBOWNIK_INTERNAL_SUBNET` to podsieć prywatnej sieci nginx → API, a `TRUSTED_PROXY_CIDRS` musi mieć tę samą wartość. Tylko z niej backend przyjmuje nagłówek `CF-Connecting-IP`, więc inne kontenery z sieci Supabase nie mogą podszyć się pod cudzy adres IP i obejść limitów. Jeśli podsieć koliduje z istniejącą siecią (`docker network inspect`), zmień obie wartości.
 
 ## 4. Supabase Auth i publiczne callbacki
 
@@ -81,7 +84,7 @@ GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
 GOTRUE_MAILER_AUTOCONFIRM: "false"
 ```
 
-Nginx Webownika udostępnia tylko bezpieczne żądania `GET` pod `/supabase-auth/`, potrzebne do kliknięcia linku z wiadomości. Operacje zmieniające dane Auth przechodzą przez backend Webownika.
+Nginx Webownika udostępnia publicznie tylko `GET /supabase-auth/verify`, potrzebne do kliknięcia linku z wiadomości. Operacje zmieniające dane Auth przechodzą przez backend Webownika.
 
 Po zmianie konfiguracji uruchom ponownie kontener Supabase Auth.
 
@@ -158,15 +161,25 @@ Włącz w Cloudflare tryb SSL/TLS `Full (strict)` i HTTPS. Nie konfiguruj osobne
 
 ## 8. Baza danych i migracje
 
-Przed pierwszym uruchomieniem wykonaj migracje z katalogu `supabase/migrations` w kolejności nazw plików. Szczególnie wymagana jest migracja:
-
-```text
-supabase/migrations/0003_english_translations.sql
-```
+Przed pierwszym uruchomieniem i przy każdej aktualizacji wykonaj nowe migracje z katalogu `supabase/migrations` w kolejności nazw plików. Bez `0005_translation_queue_and_indexes.sql` uruchomienie tłumaczenia kończy się błędem bazy.
 
 Następnie, jako administrator Postgresa, uruchom `docs/create-app-db-role.sql` po zastąpieniu hasła `CHANGE_ME_STRONG_DATABASE_PASSWORD`. Backend musi łączyć się jako `webownik_app`, a nie `postgres`. Konto migracyjne zachowaj oddzielnie i nie przekazuj go kontenerowi aplikacji.
 
-Przed każdą aktualizacją wykonaj kopię Postgresa. Regularnie testuj również odtworzenie backupu, nie tylko jego utworzenie.
+### Kopie zapasowe
+
+`scripts/backup-db.sh` zapisuje zrzut schematów `public` i `auth`, sprawdza go przez `pg_restore --list` i usuwa kopie starsze niż `RETENTION_DAYS` (domyślnie 14 dni). W TrueNAS dodaj zadanie *System → Advanced → Cron Jobs*:
+
+```bash
+BACKUP_DIR=/mnt/tank/backups/webownik /mnt/tank/apps/webownik_again/scripts/backup-db.sh
+```
+
+Jeśli kontener bazy nazywa się inaczej niż `supabase-db`, ustaw `DB_CONTAINER`. Katalog z kopiami obejmij snapshotami lub replikacją ZFS poza tę samą pulę.
+
+Uruchom skrypt ręcznie przed każdą aktualizacją. Raz na jakiś czas sprawdź odtworzenie na osobnej, pustej instancji Postgresa:
+
+```bash
+pg_restore --clean --if-exists --no-owner -d postgres webownik-YYYYMMDDTHHMMSSZ.dump
+```
 
 ## 9. Budowa i uruchomienie
 
@@ -179,16 +192,23 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail
 
 Sprawdź wynik `docker compose --env-file .env.production -f docker-compose.prod.yml config`. API i frontend powinny mieć `read_only`, `cap_drop: ALL`, limity pamięci/CPU i healthchecki.
 
-Argos Translate i model PL → EN są instalowane w obrazie backendu. Pierwsze tłumaczenie zwiększy użycie RAM; kolejka uruchamia tylko jedno tłumaczenie naraz. Zapewnij backendowi co najmniej około 1–1,5 GB dostępnej pamięci i nie uruchamiaj wielu replik API bez przeniesienia kolejki do współdzielonego systemu.
+Argos Translate i model PL → EN są instalowane w obrazie backendu. Pierwsze tłumaczenie zwiększy użycie RAM; kolejka uruchamia tylko jedno tłumaczenie naraz. Zapewnij backendowi co najmniej około 1–1,5 GB dostępnej pamięci. Kolejka tłumaczeń, limity żądań i cache sesji są trzymane w pamięci procesu, więc uruchamiaj API jako jeden proces (jedna replika, bez `--workers`) — przy skalowaniu trzeba je przenieść do współdzielonego magazynu, np. Redis.
 
-## 10. GitHub feedback i changelog
+## 10. Monitoring
+
+- Ustaw zewnętrzny monitor dostępności (np. Uptime Kuma, Healthchecks.io lub Cloudflare Health Checks) na `https://webownik.example.pl/api/health`. Ten endpoint sprawdza też połączenie z bazą; `/healthz` sprawdza tylko nginx.
+- Logi aplikacji: `docker compose --env-file .env.production -f docker-compose.prod.yml logs -f api`. Nieobsłużone wyjątki trafiają tam z pełnym tracebackiem.
+- Monitoruj też zadanie backupu: cron TrueNAS może wysyłać e-mail przy niezerowym kodzie wyjścia.
+
+## 11. GitHub feedback i changelog
 
 - Formularz tworzy Issue przez backend. Bez `GITHUB_TOKEN` pokaże kontrolowany komunikat o braku konfiguracji.
 - Changelog czyta publiczne GitHub Releases i działa bez tokenu.
 - Aby wpis pojawił się w aplikacji, opublikuj Release, a nie tylko tag lub commit.
 - Opis Release najlepiej dzielić na `Nowości`, `Poprawki` i `Zmiany`.
+- Feedback trafia do **publicznych** Issues. Formularz ostrzega o tym użytkownika, a backend usuwa obrazki i @wzmianki z treści.
 
-## 11. Test końcowy
+## 12. Test końcowy
 
 Po wdrożeniu sprawdź kolejno:
 
@@ -198,6 +218,9 @@ Po wdrożeniu sprawdź kolejno:
 4. Link prowadzi do `/email-confirmed`, a następnie możliwe jest logowanie.
 5. „Nie pamiętam hasła” wysyła wiadomość, a `/reset-password` pozwala ustawić nowe hasło.
 6. Rejestracja i reset nie ujawniają tokenów w pasku adresu po załadowaniu ekranu.
+7. `curl -I https://webownik.example.pl/assets/<plik>.js` zwraca nagłówki `Content-Security-Policy` i `Strict-Transport-Security`.
+8. `https://webownik.example.pl/supabase-auth/settings` zwraca 404 (publiczne jest tylko `/supabase-auth/verify`).
+9. Uruchomienie tłumaczenia talii przechodzi przez stany „W kolejce” → „Tłumaczenie…” → „Gotowe”.
 7. Upload TXT i ZIP działa.
 8. Ręczne tłumaczenie PL → EN przechodzi przez statusy kolejki i kończy się poprawnie.
 9. Formularz feedbacku tworzy GitHub Issue.

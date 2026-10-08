@@ -22,7 +22,7 @@ Mailpit, Kong, PostgREST, or the FastAPI container.
   Docker network.
 
 The only public Supabase route in the supplied Nginx config is a read-only callback path used by
-confirmation and password-recovery emails: `/supabase-auth/*`.
+confirmation and password-recovery emails: only `GET /supabase-auth/verify`.
 
 Run migrations with an administrative database account, then execute
 `docs/create-app-db-role.sql`. FastAPI must connect as `webownik_app`, never as `postgres`.
@@ -98,7 +98,9 @@ The secret key is validated by FastAPI. The site key is public. Add Cloudflare W
 - A broader API exhaustion limit suitable for expected usage.
 
 Only trust `CF-Connecting-IP` while the origin is inaccessible outside the tunnel. Do not open the
-frontend or API ports on the router.
+frontend or API ports on the router. FastAPI accepts the header only from `TRUSTED_PROXY_CIDRS`
+(the `internal` nginx → API network, `WEBOWNIK_INTERNAL_SUBNET`); requests from any other container,
+e.g. on the shared Supabase network, are rate limited by their real source address.
 
 ## Operations
 

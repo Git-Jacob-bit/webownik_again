@@ -5,12 +5,13 @@ from zipfile import BadZipFile, ZipFile
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form, status
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
-from sqlalchemy import func
+from sqlalchemy import delete as sa_delete, func
 
 from database import get_session
-from models import Deck, Question, Answer, User, QuizSession
+from models import Deck, Question, Answer, User
 from parser import parse_txt_file
 from routers.auth import get_current_user
+from routers.quiz import add_question_to_sessions, remove_question_from_sessions
 from schemas import QuestionUpdate, QuestionCreate, DeckWithQuestions
 from translation import enqueue_deck_translation
 from limits import (
@@ -105,12 +106,12 @@ def read_my_decks(
     current_user: User = Depends(get_current_user)
 ):
     """Zwraca listę zestawów należących do zalogowanego użytkownika."""
-    statement = select(Deck).where(Deck.user_id == current_user.id)
+    statement = select(Deck).where(Deck.user_id == current_user.id).order_by(Deck.id)
     return session.exec(statement).all()
 
 # --- UPLOAD ZESTAWU ---
 @router.post("/upload-form")
-async def upload_deck_form_secure(
+def upload_deck_form_secure(
     files: List[UploadFile] = File(...),
     deck_name: str = Form(..., min_length=3, max_length=MAX_DECK_TITLE_LENGTH),
     session: Session = Depends(get_session),
@@ -138,7 +139,7 @@ async def upload_deck_form_secure(
     total_uploaded = 0
     for index, file in enumerate(files):
         read_limit = MAX_ZIP_SIZE if suffixes[index] == '.zip' else MAX_FILE_SIZE
-        content = await file.read(read_limit + 1)
+        content = file.file.read(read_limit + 1)
         if len(content) > read_limit:
             raise HTTPException(status_code=413, detail=f"Plik {file.filename or 'plik'} przekracza dozwolony limit")
         total_uploaded += len(content)
@@ -209,139 +210,53 @@ async def upload_deck_form_secure(
     return {"deck_id": new_deck.id, "deck_title": new_deck.title, "questions_added": questions_count, "translation_status": "pending"}
 
 
-async def upload_deck_form(
-    files: List[UploadFile] = File(...),
-    deck_name: str = Form(..., min_length=3, description="Nazwa musi mieć min 3 znaki"),
-    session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_user)
-):
-    """Tworzy jeden zestaw z wielu plików dla zalogowanego usera."""
-    
-    # 1. Tworzymy pusty zestaw
-    new_deck = Deck(title=deck_name, user_id=current_user.id)
-    session.add(new_deck)
-    session.commit()
-    session.refresh(new_deck)
-    
-    questions_count = 0
-    
-    # 2. Iterujemy przez pliki
-    for file in files:
-        if not file.filename.endswith(".txt"):
-            continue 
-
-        file.file.seek(0, 2)
-        file_size = file.file.tell()
-        await file.seek(0)
-        
-        if file_size > MAX_FILE_SIZE:
-            continue
-
-        text_content = ""
-        try:
-            content = await file.read()
-            text_content = content.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-
-        if not text_content:
-            continue
-
-        questions_data = parse_txt_file(text_content)
-        
-        # PĘTLA GŁÓWNA
-        for item in questions_data:
-            q_text = ""
-            answers_list = []
-
-            # --- A. PRZYPADEK: Parser zwraca Słownik (Twój przypadek ze screena) ---
-            if isinstance(item, dict):
-                q_text = item.get("content", "")
-                raw_answers = item.get("answers", [])
-                
-                # Przerabiamy odpowiedzi ze słowników na format (treść, czy_poprawna)
-                for ans in raw_answers:
-                    if isinstance(ans, dict):
-                        answers_list.append((ans.get("content", ""), ans.get("is_correct", False)))
-                    elif isinstance(ans, (list, tuple)) and len(ans) == 2:
-                        answers_list.append(ans)
-                    else:
-                        answers_list.append((str(ans), False))
-
-            # --- B. PRZYPADEK: Parser zwraca Krotkę (content, answers) ---
-            elif isinstance(item, (list, tuple)) and len(item) == 2:
-                q_text, raw_answers = item
-                answers_list = raw_answers # Zakładamy, że tu format jest już OK
-
-            # --- C. PRZYPADEK: Sam tekst ---
-            else:
-                q_text = str(item)
-                answers_list = []
-
-            # Zapis do bazy (tylko jeśli mamy treść pytania)
-            if q_text:
-                q = Question(content=q_text, deck_id=new_deck.id)
-                session.add(q)
-                session.commit()
-                session.refresh(q)
-                
-                for ans_item in answers_list:
-                    # Upewniamy się, że mamy parę (tekst, bool)
-                    if isinstance(ans_item, (list, tuple)) and len(ans_item) == 2:
-                        a_text, a_correct = ans_item
-                    else:
-                        a_text = str(ans_item)
-                        a_correct = False
-                        
-                    a = Answer(
-                        content=str(a_text), 
-                        is_correct=a_correct, 
-                        question_id=q.id
-                    )
-                    session.add(a)
-                
-                questions_count += 1
-
-    session.commit()
-    return {
-        "deck_id": new_deck.id, 
-        "deck_title": new_deck.title, 
-        "questions_added": questions_count
-    }
-
 # --- EDYCJA PYTANIA (FULL) ---
 @router.put("/question/{question_id}/full")
 def update_full_question(
     question_id: int,
-    data: QuestionUpdate,  # <--- TU ZMIANA: FastAPI samo sprawdzi dane!
+    data: QuestionUpdate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Pobieramy pytanie z bazy
-    statement = select(Question).where(Question.id == question_id).options(selectinload(Question.deck))
+    statement = (
+        select(Question)
+        .where(Question.id == question_id)
+        .options(selectinload(Question.deck), selectinload(Question.answers))
+    )
     question = session.exec(statement).first()
-    
+
     if not question:
         raise HTTPException(status_code=404, detail="Pytanie nie istnieje")
-    
+
     if question.deck.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Brak uprawnień")
 
-    # 2. Aktualizujemy treść (Pydantic już sprawdził, że content > 3 znaki)
+    if not any(answer.is_correct for answer in data.answers):
+        raise HTTPException(status_code=422, detail="Zaznacz co najmniej jedną poprawną odpowiedź")
+
+    existing = {answer.id: answer for answer in question.answers}
+    submitted_ids = {answer.id for answer in data.answers if answer.id is not None}
+    if not submitted_ids.issubset(existing):
+        raise HTTPException(status_code=400, detail="Odpowiedź nie należy do tego pytania")
+
     question.content = data.content
     question.content_en = None
     session.add(question)
 
-    # 3. Aktualizujemy odpowiedzi
-    # data.answers to teraz lista obiektów, a nie słowników!
+    # Odpowiedzi pominięte w formularzu zostały usunięte przez użytkownika.
+    for answer_id, answer in existing.items():
+        if answer_id not in submitted_ids:
+            session.delete(answer)
+
     for ans_data in data.answers:
-        answer = session.get(Answer, ans_data.id)
-        
-        if answer and answer.question_id == question.id:
+        answer = existing.get(ans_data.id) if ans_data.id is not None else None
+        if answer is None:
+            answer = Answer(question_id=question.id, content=ans_data.content, is_correct=ans_data.is_correct)
+        else:
             answer.content = ans_data.content
             answer.content_en = None
             answer.is_correct = ans_data.is_correct
-            session.add(answer)
+        session.add(answer)
 
     question.deck.translation_status = "pending"
     question.deck.translation_completed = 0
@@ -352,39 +267,27 @@ def update_full_question(
 # --- USUWANIE ZESTAWU ---
 @router.delete("/{deck_id}")
 def delete_deck(
-    deck_id: int, 
+    deck_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
     deck = session.get(Deck, deck_id)
     if not deck:
         raise HTTPException(status_code=404, detail="Nie znaleziono zestawu")
-    
+
     if deck.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="To nie Twój zestaw!")
-    
-    # Usuwamy sesje quizu (ważne!)
-    quiz_sessions = session.exec(select(QuizSession).where(QuizSession.deck_id == deck_id)).all()
-    for qs in quiz_sessions:
-        session.delete(qs)
 
-    # Usuwamy pytania i odpowiedzi
-    questions = session.exec(select(Question).where(Question.deck_id == deck_id)).all()
-    for question in questions:
-        answers = session.exec(select(Answer).where(Answer.question_id == question.id)).all()
-        for answer in answers:
-            session.delete(answer)
-        session.delete(question)
-
-    session.delete(deck)
+    # Pytania, odpowiedzi i sesje quizu usuwa ON DELETE CASCADE w bazie.
+    session.exec(sa_delete(Deck).where(Deck.id == deck_id))
     session.commit()
-    
+
     return {"message": "Zestaw usunięty"}
 
 # --- USUWANIE PYTANIA ---
 @router.delete("/question/{question_id}")
 def delete_question(
-    question_id: int, 
+    question_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
@@ -393,17 +296,13 @@ def delete_question(
 
     if not question:
         raise HTTPException(status_code=404, detail="Nie znaleziono pytania")
-    
+
     if question.deck.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Nie możesz usuwać nie swoich pytań")
 
-    # Usuwamy odpowiedzi
-    statement_ans = select(Answer).where(Answer.question_id == question_id)
-    answers = session.exec(statement_ans).all()
-    for ans in answers:
-        session.delete(ans)
-
-    session.delete(question)
+    remove_question_from_sessions(session, question.deck_id, question.id)
+    # Odpowiedzi usuwa ON DELETE CASCADE w bazie.
+    session.exec(sa_delete(Question).where(Question.id == question_id))
     session.commit()
     return {"ok": True, "message": "Usunięto pytanie"}
 
@@ -411,7 +310,7 @@ def delete_question(
 @router.post("/{deck_id}/question")
 def add_question_to_deck(
     deck_id: int,
-    data: QuestionCreate, # <--- Używamy schematu (automatyczna walidacja)
+    data: QuestionCreate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
@@ -424,18 +323,16 @@ def add_question_to_deck(
     ).one()
     if deck_question_count >= MAX_QUESTIONS_PER_DECK or user_question_count >= MAX_QUESTIONS_PER_USER:
         raise HTTPException(status_code=409, detail="Osiągnięto limit pytań")
-    
-    # Tu zmiana: bierzemy content z obiektu data
+
     new_q = Question(content=data.content, deck_id=deck_id)
     session.add(new_q)
-    session.commit()
-    session.refresh(new_q)
-    
-    # Dodajemy 4 puste odpowiedzi na start
+    session.flush()
+
+    # Szkic odpowiedzi; frontend od razu otwiera edycję, a zapis wymaga poprawnej odpowiedzi.
     for i in range(4):
-        polish_content = f"Odpowiedź {i+1}"
-        session.add(Answer(content=polish_content, is_correct=False, question_id=new_q.id))
-    
+        session.add(Answer(content=f"Odpowiedź {i+1}", is_correct=i == 0, question_id=new_q.id))
+
+    add_question_to_sessions(session, deck_id, new_q.id)
     deck.translation_status = "pending"
     deck.translation_completed = 0
     session.add(deck)

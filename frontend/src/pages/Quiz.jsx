@@ -94,7 +94,6 @@ const Quiz = () => {
   
   const [question, setQuestion] = useState(null);
   const [remaining, setRemaining] = useState(0);
-  const [initialCount, setInitialCount] = useState(0);
   
   const [selectedAnswerIds, setSelectedAnswerIds] = useState(new Set());
   const [feedback, setFeedback] = useState(null);
@@ -188,7 +187,6 @@ const Quiz = () => {
   const applyProgress = data => {
     setProgress(previous => ({ ...previous, ...data }));
     if (data.remaining !== undefined) setRemaining(data.remaining);
-    if (data.initial_questions !== undefined) setInitialCount(data.initial_questions);
     if (data.time_spent !== undefined) setTimer(data.time_spent);
   };
 

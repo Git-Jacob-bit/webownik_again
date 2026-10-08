@@ -16,7 +16,7 @@ class UserCreate(BaseModel):
 
 # --- WALIDACJA ODPOWIEDZI (PRZY EDYCJI) ---
 class AnswerUpdate(BaseModel):
-    id: int
+    id: int | None = None  # brak id = nowa odpowiedź
     content: str = Field(min_length=1, max_length=MAX_ANSWER_LENGTH, description="Odpowiedź nie może być pusta")
     is_correct: bool
 

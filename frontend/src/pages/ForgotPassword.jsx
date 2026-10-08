@@ -3,11 +3,13 @@ import { Mail, ArrowRight, Loader2, ArrowLeft } from 'lucide-react';
 import api from '../api'; // <--- ZMIANA: Importujemy nasze api
 import { Link } from 'react-router-dom';
 import InlineMessage from '../components/InlineMessage';
+import TurnstileWidget from '../components/TurnstileWidget';
 
 function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState({ type: '', message: '' });
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const handleReset = async (e) => {
     e.preventDefault();
@@ -17,7 +19,7 @@ function ForgotPassword() {
     try {
       // ZMIANA: Używamy api.post i krótkiej ścieżki.
       // Adres serwera (localhost lub IP) zostanie dodany automatycznie z api.js
-      await api.post('/auth/forgot-password', { email });
+      await api.post('/auth/forgot-password', { email, turnstile_token: turnstileToken || null });
       
       setStatus({ 
         type: 'success', 
@@ -72,6 +74,8 @@ function ForgotPassword() {
                 />
               </div>
             </div>
+
+            <TurnstileWidget onToken={setTurnstileToken} />
 
             <button
               type="submit"

@@ -1,3 +1,4 @@
+import logging
 import secrets
 import time
 from collections import defaultdict, deque
@@ -12,7 +13,13 @@ from sqlmodel import select
 
 from config import settings
 from database import engine
+from network import client_ip
 from routers import auth, dashboard, decks, github, quiz
+from translation import reset_interrupted_translations
+
+
+# uvicorn konfiguruje tylko własne loggery; bez tego logi aplikacji poniżej WARNING by znikały.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def wait_for_db() -> None:
@@ -30,6 +37,7 @@ def wait_for_db() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     wait_for_db()
+    reset_interrupted_translations()
     yield
 
 
@@ -91,12 +99,11 @@ def _prune_rate_limit_keys(now: float) -> None:
 
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
-    forwarded_ip = request.headers.get("CF-Connecting-IP") if settings.is_production else None
-    client_ip = forwarded_ip or (request.client.host if request.client else "unknown")
+    ip = client_ip(request)
     now = time.monotonic()
     _prune_rate_limit_keys(now)
     for bucket, maximum, window in _request_limits(request):
-        key = (client_ip, bucket)
+        key = (ip, bucket)
         history = request_history[key]
         while history and history[0] <= now - window:
             history.popleft()

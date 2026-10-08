@@ -1,10 +1,12 @@
 from typing import Literal
 
 from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
     database_url: str
     supabase_url: str
     supabase_publishable_key: str
@@ -16,6 +18,8 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     cookie_samesite: Literal["strict", "lax", "none"] = "strict"
     turnstile_secret_key: str = ""
+    # Sieci, z których przychodzi nginx; tylko od nich przyjmujemy CF-Connecting-IP.
+    trusted_proxy_cidrs: str = ""
     github_repository: str = "Git-Jacob-bit/webownik_again"
     github_token: str = ""
 
@@ -41,6 +45,8 @@ class Settings(BaseSettings):
         hosts = [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
         if not hosts or "*" in hosts:
             errors.append("ALLOWED_HOSTS must contain explicit hosts")
+        if not self.trusted_proxy_cidrs.strip():
+            errors.append("TRUSTED_PROXY_CIDRS must list the nginx network")
         required_secrets = {
             "SUPABASE_PUBLISHABLE_KEY": self.supabase_publishable_key,
             "SUPABASE_SECRET_KEY": self.supabase_secret_key,
@@ -54,9 +60,6 @@ class Settings(BaseSettings):
         if errors:
             raise ValueError("Unsafe production configuration: " + "; ".join(errors))
         return self
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()
