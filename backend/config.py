@@ -8,7 +8,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
     database_url: str
-    supabase_url: str
+    # Pełny Supabase (Kong/Envoy): SUPABASE_URL, Auth pod {SUPABASE_URL}/auth/v1.
+    # Sam GoTrue bez bramy (deploy/compose.yaml): SUPABASE_AUTH_URL=http://auth:9999.
+    supabase_url: str = ""
+    supabase_auth_url: str = ""
     supabase_publishable_key: str
     supabase_secret_key: str
     domain: str
@@ -24,11 +27,19 @@ class Settings(BaseSettings):
     github_token: str = ""
 
     @property
+    def auth_base_url(self) -> str:
+        if self.supabase_auth_url.strip():
+            return self.supabase_auth_url.strip().rstrip("/")
+        return f"{self.supabase_url.strip().rstrip('/')}/auth/v1"
+
+    @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
 
     @model_validator(mode="after")
     def validate_production_security(self):
+        if not self.supabase_url.strip() and not self.supabase_auth_url.strip():
+            raise ValueError("Set SUPABASE_URL or SUPABASE_AUTH_URL")
         if not self.is_production:
             return self
 

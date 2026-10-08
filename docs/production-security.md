@@ -1,121 +1,83 @@
 # Webownik on TrueNAS: production checklist
 
-The stack created by `supabase start` is for development only. On TrueNAS deploy the official
-self-hosted Supabase Docker Compose stack, generate fresh production secrets, and then deploy
-Webownik with `docker-compose.prod.yml`.
+The stack created by `supabase start` is for development only. Production runs from
+`deploy/compose.yaml` as a single TrueNAS "Install via YAML" app (see `DEPLOY_TRUENAS.md`): a
+minimal Supabase (Postgres + GoTrue Auth), the migration job, FastAPI, nginx and `cloudflared`.
 
 ## Network boundary
 
-Expose exactly one service through Cloudflare Tunnel: `frontend:8080`. Nginx serves the SPA and
-proxies `/api/*` to FastAPI. Do not create Tunnel public hostnames for PostgreSQL, Supabase Studio,
-Mailpit, Kong, PostgREST, or the FastAPI container.
+Exactly one service is reachable from the Internet: `web:8080`, through the app's own Cloudflare
+Tunnel. No container publishes ports. Do not add Tunnel public hostnames for `api`, `auth` or `db`.
 
-- If `cloudflared` is a container, attach it to the private `tunnel` network and use
-  `http://frontend:8080` as the tunnel service. Remove the `ports` block from `frontend` if LAN access
-  to the application is not needed.
-- If `cloudflared` runs on the TrueNAS host, bind the frontend to `127.0.0.1:5000` and point the
-  tunnel to `http://127.0.0.1:5000`.
-- Publish Studio only on the TrueNAS LAN address and restrict it to the trusted Wi-Fi subnet with
-  the TrueNAS firewall. Never route Studio through the public tunnel. Use a strong random
-  `DASHBOARD_PASSWORD` even on LAN.
-- Do not publish PostgreSQL port 5432. FastAPI connects to `db:5432` over the private Supabase
-  Docker network.
+| Network | Members | Internet egress |
+| --- | --- | --- |
+| `backend` | db, migrate, auth, api | yes (Resend SMTP, Turnstile, GitHub) |
+| `frontend` | web, api, auth | no (`internal: true`, fixed subnet) |
+| `tunnel` | web, cloudflared | yes |
 
-The only public Supabase route in the supplied Nginx config is a read-only callback path used by
-confirmation and password-recovery emails: only `GET /supabase-auth/verify`.
+nginx proxies `/api/*` to FastAPI and only `GET /supabase-auth/verify` to GoTrue — the callback
+used by confirmation and password-recovery emails. Every other Auth operation goes through FastAPI.
 
-Run migrations with an administrative database account, then execute
-`docs/create-app-db-role.sql`. FastAPI must connect as `webownik_app`, never as `postgres`.
+FastAPI accepts `CF-Connecting-IP` only from `TRUSTED_PROXY_CIDRS` (the `frontend` subnet);
+anything else is rate limited by its real source address.
 
-## Required production secrets
+## Database roles
 
-Do not reuse keys printed by local Supabase CLI. Generate all values using the scripts included in
-the official self-hosting bundle:
+- `supabase_admin` (superuser of `supabase/postgres`) — used only by the `migrate` job.
+- `supabase_auth_admin` — GoTrue; its password is set by `migrate` (`deploy/migrate/roles.sql`).
+- `webownik_app` — FastAPI; DML on application tables only, `BYPASSRLS` because RLS is enabled
+  without policies.
 
-- PostgreSQL password
-- dashboard username and password
-- publishable and secret API keys
-- asymmetric JWT signing keys
-- Realtime and pooler secrets
+## Secrets
 
-Store `.env.production` and the Supabase `.env` outside Git. Back them up in an encrypted secret
-store. Fill `.env.production` from `.env.production.example`.
+`scripts/render-truenas-compose.py` generates the database passwords, the JWT secret and the
+`anon`/`service_role` keys, and reads the Resend API key, Turnstile secret, tunnel token and
+optional GitHub token without echo. The rendered file is written outside the repository with mode
+600. Keep it in an encrypted secret store; never commit it or paste it into chats or issues.
 
-## Supabase Auth
+Do not reuse keys printed by the local Supabase CLI.
 
-Configure the production Supabase Auth service with:
+## Supabase Auth (GoTrue)
 
-```env
-SITE_URL=https://webownik.example.pl
-API_EXTERNAL_URL=https://webownik.example.pl/supabase-auth
-ADDITIONAL_REDIRECT_URLS=https://webownik.example.pl/email-confirmed,https://webownik.example.pl/reset-password
-ENABLE_EMAIL_SIGNUP=true
-ENABLE_EMAIL_AUTOCONFIRM=false
-GOTRUE_MAILER_SECURE_EMAIL_CHANGE_ENABLED=true
-GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION=true
-# Absolute path replaces the path of API_EXTERNAL_URL in email links (url.ResolveReference).
-MAILER_URLPATHS_CONFIRMATION="/supabase-auth/verify"
-MAILER_URLPATHS_INVITE="/supabase-auth/verify"
-MAILER_URLPATHS_RECOVERY="/supabase-auth/verify"
-MAILER_URLPATHS_EMAIL_CHANGE="/supabase-auth/verify"
-```
+Configured in `deploy/compose.yaml`:
 
-Keep access tokens short lived (the current one-hour lifetime is reasonable) and keep refresh token
-rotation enabled.
+- email confirmation required (`GOTRUE_MAILER_AUTOCONFIRM=false`), phone and anonymous sign-in off;
+- password policy: 8+ characters with lower case, upper case and digits;
+- refresh token rotation, secure email change, reauthentication for password updates;
+- one-hour access tokens;
+- `GOTRUE_MAILER_URLPATHS_*=/supabase-auth/verify` — GoTrue builds links with
+  `url.ResolveReference`, so this absolute path replaces the path of `API_EXTERNAL_URL`.
+
+All logins reach GoTrue from the `api` container, so GoTrue's per-IP limits are effectively global
+and are raised accordingly; per-client limits are enforced by FastAPI.
 
 ## Resend SMTP
 
-Resend is the service previously used by this project. Verify the sending domain in Resend, create a
-dedicated API key, and configure the production Supabase `.env`:
-
-```env
-SMTP_ADMIN_EMAIL=auth@webownik.example.pl
-SMTP_HOST=smtp.resend.com
-SMTP_PORT=587
-SMTP_USER=resend
-SMTP_PASS=REPLACE_WITH_RESEND_API_KEY
-SMTP_SENDER_NAME=Webownik
-```
-
-Port 587 uses STARTTLS. Never put `SMTP_PASS` in the frontend or commit it. Configure SPF and DKIM
-records shown by Resend. Test registration confirmation, password recovery, and password-change
-notifications before opening registration publicly.
+`smtp.resend.com:587` (STARTTLS), user `resend`, password = API key with *Sending access* only,
+sender in the verified domain. Disable click and open tracking for the sending domain so one-time
+links are not rewritten.
 
 ## Cloudflare
 
-Create Turnstile keys for the public hostname and set:
+Turnstile: the site key is public and baked into the `webownik-web` image (GitHub variable
+`TURNSTILE_SITE_KEY`); the secret key is validated by FastAPI.
 
-```env
-# Webownik backend
-TURNSTILE_SECRET_KEY=...
+Recommended WAF rate limits:
 
-# Frontend build argument
-VITE_TURNSTILE_SITE_KEY=...
-```
-
-The secret key is validated by FastAPI. The site key is public. Add Cloudflare WAF rate limits for:
-
-- `POST /api/auth/token`: start with 5 failed requests per minute per IP, then Managed Challenge.
+- `POST /api/auth/token`: 5 failed requests per minute per IP, then Managed Challenge.
 - `POST /api/auth/register`: 3 requests per 10 minutes per IP.
 - `POST /api/auth/forgot-password`: 3 requests per hour per IP.
 - `POST /api/decks/upload-form`: 10 requests per hour per IP.
 - `POST /api/decks/*/translate`: 10 requests per hour per IP.
 - A broader API exhaustion limit suitable for expected usage.
 
-Only trust `CF-Connecting-IP` while the origin is inaccessible outside the tunnel. Do not open the
-frontend or API ports on the router. FastAPI accepts the header only from `TRUSTED_PROXY_CIDRS`
-(the `internal` nginx → API network, `WEBOWNIK_INTERNAL_SUBNET`); requests from any other container,
-e.g. on the shared Supabase network, are rate limited by their real source address.
-
 ## Operations
 
-- Pin image versions and schedule regular Supabase, application, TrueNAS, and Cloudflare Tunnel
-  updates.
-- Back up PostgreSQL with scheduled `pg_dump` plus TrueNAS snapshots. Keep at least one encrypted
-  off-device copy and perform a restore test.
-- Monitor container health, authentication failures, disk usage, backup age, and Tunnel status.
-- Disable FastAPI docs and SQL debug logging in production (controlled by `ENVIRONMENT=production`).
-- Run dependency and image vulnerability scans before releases.
-- Review users in Studio only from the trusted LAN.
-- Keep the application containers read-only, non-root, without Linux capabilities, and enforce
-  the CPU, memory, PID limits and healthchecks defined in `docker-compose.prod.yml`.
+- Third-party images (`supabase/postgres`, `supabase/gotrue`) are pinned; update them deliberately
+  and test the stack (CI runs the whole compose file before publishing application images).
+- Back up PostgreSQL with `scripts/backup-db.sh` plus TrueNAS snapshots. Keep an off-device copy and
+  perform restore tests.
+- Monitor container health, authentication failures, disk usage, backup age and Tunnel status.
+- FastAPI docs and SQL debug logging are disabled when `ENVIRONMENT=production`.
+- Application containers run read-only, non-root, without Linux capabilities, with memory and PID
+  limits and healthchecks.
