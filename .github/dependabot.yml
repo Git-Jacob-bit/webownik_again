@@ -5,23 +5,56 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # ESLint i wtyczki mają wspólne peer dependencies — osobne PR-y nie przejdą `npm ci`.
+      eslint:
+        patterns: ["eslint", "eslint-*", "@eslint/*", "globals"]
+    ignore:
+      # eslint-plugin-react (7.37.x) nie wspiera jeszcze ESLint 10.
+      - dependency-name: eslint
+        versions: [">=10"]
+      - dependency-name: "@eslint/js"
+        versions: [">=10"]
+      # Tailwind 4 to osobna migracja (docs/security-audit-exceptions.md).
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+
+  # requirements.txt generuje pip-compile z requirements.in; dependabot aktualizuje oba pliki.
   - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # argostranslate 1.11 wymaga sacremoses<0.2.
+      - dependency-name: sacremoses
+        versions: [">=0.2"]
+
   - package-ecosystem: docker
     directory: /backend
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      # Zmiana wersji Pythona wymaga przeliczenia requirements.txt i testów — robimy ją ręcznie.
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
   - package-ecosystem: docker
     directory: /frontend
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      # Tylko wersje LTS Node — przejście na kolejną robimy ręcznie (razem z CI).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]

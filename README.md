@@ -105,7 +105,7 @@ Linia `X…` to maska poprawnych odpowiedzi (`1` = poprawna) w kolejności odpow
 ```bash
 # Backend (tymczasowa baza SQLite, Supabase jest mockowany)
 cd backend
-pip install --require-hashes -r requirements.lock
+pip install --require-hashes -r requirements.txt
 pip install -r requirements-dev.txt
 pytest
 
@@ -116,7 +116,7 @@ npm run lint
 npm run build
 ```
 
-CI (`.github/workflows/ci.yml`) uruchamia testy, lint, build, audyt zależności i buduje obrazy Dockera. Po zmianie `backend/requirements.txt` wygeneruj ponownie `backend/requirements.lock` poleceniem podanym w nagłówku tego pliku.
+CI (`.github/workflows/ci.yml`) uruchamia testy, lint, build, audyt zależności i buduje obrazy Dockera. Zależności backendu: wersje bezpośrednie są w `backend/requirements.in`, a `backend/requirements.txt` z hashami generuje z niego `pip-compile` (polecenie w nagłówku pliku; dependabot robi to sam). `argostranslate` jest w osobnym `requirements-argos.txt`, bo instaluje się go bez zależności.
 
 ---
 

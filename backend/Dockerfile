@@ -13,10 +13,11 @@ RUN python -m venv "$VIRTUAL_ENV" \
     && rm -rf /var/lib/apt/lists/*
 
 # Kopiujemy requirements i instalujemy paczki
-COPY requirements.txt requirements.lock ./
-RUN pip install --no-cache-dir --require-hashes --requirement requirements.lock \
-    && pip install --no-cache-dir --no-deps "$(grep '^argostranslate==' requirements.txt)" \
-    && python -c "from pathlib import Path; p=Path('/opt/venv/lib/python3.11/site-packages/argostranslate/sbd.py'); s=p.read_text(); s=s.replace('import stanza\n', 'try:\n    import stanza\nexcept ImportError:\n    stanza = None\n'); p.write_text(s)"
+COPY requirements.txt requirements-argos.txt ./
+# argostranslate bez zależności: wymaga stanza (a przez nią torch), którego aplikacja nie używa.
+RUN pip install --no-cache-dir --require-hashes --requirement requirements.txt \
+    && pip install --no-cache-dir --no-deps --requirement requirements-argos.txt \
+    && python -c "import importlib.util; from pathlib import Path; p=Path(importlib.util.find_spec('argostranslate').submodule_search_locations[0])/'sbd.py'; s=p.read_text(); s=s.replace('import stanza\n', 'try:\n    import stanza\nexcept ImportError:\n    stanza = None\n'); p.write_text(s)"
 
 # Jedyny model językowy aplikacji: polski oryginał -> angielska kopia.
 ARG ARGOS_MODEL_SHA256=07eda9edbd6ae5121df7c1d7bd847030423269b8c5056f1c222495c4a81e1721
