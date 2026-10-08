@@ -53,6 +53,11 @@ ENABLE_EMAIL_SIGNUP=true
 ENABLE_EMAIL_AUTOCONFIRM=false
 GOTRUE_MAILER_SECURE_EMAIL_CHANGE_ENABLED=true
 GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION=true
+# Absolute path replaces the path of API_EXTERNAL_URL in email links (url.ResolveReference).
+MAILER_URLPATHS_CONFIRMATION="/supabase-auth/verify"
+MAILER_URLPATHS_INVITE="/supabase-auth/verify"
+MAILER_URLPATHS_RECOVERY="/supabase-auth/verify"
+MAILER_URLPATHS_EMAIL_CHANGE="/supabase-auth/verify"
 ```
 
 Keep access tokens short lived (the current one-hour lifetime is reasonable) and keep refresh token
