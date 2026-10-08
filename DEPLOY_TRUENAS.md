@@ -72,7 +72,15 @@ API_EXTERNAL_URL=https://webownik.example.pl/supabase-auth
 ADDITIONAL_REDIRECT_URLS=https://webownik.example.pl/email-confirmed,https://webownik.example.pl/reset-password
 ENABLE_EMAIL_SIGNUP=true
 ENABLE_EMAIL_AUTOCONFIRM=false
+
+# Ścieżka linku w mailach. Musi wskazywać na publiczną trasę nginx Webownika.
+MAILER_URLPATHS_CONFIRMATION="/supabase-auth/verify"
+MAILER_URLPATHS_INVITE="/supabase-auth/verify"
+MAILER_URLPATHS_RECOVERY="/supabase-auth/verify"
+MAILER_URLPATHS_EMAIL_CHANGE="/supabase-auth/verify"
 ```
+
+> **Uwaga:** domyślny `.env` self-hosted Supabase ma `MAILER_URLPATHS_*="/auth/v1/verify"`. Supabase Auth składa link przez `ResolveReference`, więc ścieżka bezwzględna z `MAILER_URLPATHS_*` **zastępuje** ścieżkę z `API_EXTERNAL_URL` (domena zostaje). Bez powyższej zmiany link miałby postać `https://webownik.example.pl/auth/v1/verify?...` i zamiast potwierdzenia/resetu otworzyłby stronę główną aplikacji.
 
 W zależności od wersji obrazu Supabase odpowiadają im ustawienia kontenera Auth:
 
@@ -82,6 +90,10 @@ API_EXTERNAL_URL: https://webownik.example.pl/supabase-auth
 GOTRUE_URI_ALLOW_LIST: https://webownik.example.pl/email-confirmed,https://webownik.example.pl/reset-password
 GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
 GOTRUE_MAILER_AUTOCONFIRM: "false"
+GOTRUE_MAILER_URLPATHS_CONFIRMATION: /supabase-auth/verify
+GOTRUE_MAILER_URLPATHS_INVITE: /supabase-auth/verify
+GOTRUE_MAILER_URLPATHS_RECOVERY: /supabase-auth/verify
+GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /supabase-auth/verify
 ```
 
 Nginx Webownika udostępnia publicznie tylko `GET /supabase-auth/verify`, potrzebne do kliknięcia linku z wiadomości. Operacje zmieniające dane Auth przechodzą przez backend Webownika.
@@ -99,7 +111,20 @@ Po zmianie konfiguracji uruchom ponownie kontener Supabase Auth.
 
 ### Konfiguracja kontenera Supabase Auth
 
-Dodaj do środowiska usługi Auth:
+W oficjalnym `docker-compose.yml` Supabase dane SMTP są przekazywane z `.env` Supabase. Ustaw tam:
+
+```env
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=587
+SMTP_USER=resend
+SMTP_PASS=re_TWOJ_KLUCZ_API
+SMTP_ADMIN_EMAIL=no-reply@mail.example.pl
+SMTP_SENDER_NAME=Webownik
+```
+
+`SMTP_ADMIN_EMAIL` to adres nadawcy — musi być w domenie zweryfikowanej w Resend. Limit częstotliwości (`GOTRUE_SMTP_MAX_FREQUENCY`) jest w oficjalnym compose zakomentowany; odkomentuj go w usłudze `auth` albo dodaj przez `docker-compose.override.yml` (patrz niżej).
+
+Jeśli konfigurujesz kontener Auth bezpośrednio, odpowiadają temu zmienne:
 
 ```yaml
 GOTRUE_SMTP_HOST: smtp.resend.com
@@ -122,7 +147,20 @@ Aplikacja publikuje gotowe dwujęzyczne szablony:
 - `https://webownik.example.pl/email-templates/confirmation.html`
 - `https://webownik.example.pl/email-templates/recovery.html`
 
-Po pierwszym uruchomieniu frontendu możesz wskazać je w Auth:
+Po pierwszym uruchomieniu frontendu możesz wskazać je w Auth. Oficjalny compose Supabase nie przekazuje tych zmiennych, więc dodaj je w `docker-compose.override.yml` obok `docker-compose.yml` Supabase:
+
+```yaml
+services:
+  auth:
+    environment:
+      GOTRUE_SMTP_MAX_FREQUENCY: 60s
+      GOTRUE_MAILER_TEMPLATES_CONFIRMATION: https://webownik.example.pl/email-templates/confirmation.html
+      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: Potwierdź konto w Webowniku / Confirm your Webownik account
+      GOTRUE_MAILER_TEMPLATES_RECOVERY: https://webownik.example.pl/email-templates/recovery.html
+      GOTRUE_MAILER_SUBJECTS_RECOVERY: Reset hasła w Webowniku / Reset your Webownik password
+```
+
+Odpowiednie zmienne kontenera Auth:
 
 ```yaml
 GOTRUE_MAILER_TEMPLATES_CONFIRMATION: https://webownik.example.pl/email-templates/confirmation.html
