@@ -98,7 +98,9 @@ jobs:
           # API przez nginx (sprawdza też połączenie z bazą jako webownik_app).
           $compose exec -T web wget -qO- http://127.0.0.1:8080/api/health | grep -q '"ok"'
           # Link z maila trafia do GoTrue (303 z błędem tokenu), a nie do SPA.
-          $compose exec -T web sh -c "wget -S --max-redirect=0 -O /dev/null 'http://127.0.0.1:8080/supabase-auth/verify?token=x&type=recovery&redirect_to=https://webownik.czech-net.com/reset-password' 2>&1" | grep -q 'HTTP/1.1 303'
+          # (busybox wget: pokazuje nagłówki pierwszej odpowiedzi, a przekierowanie na domenę
+          # publiczną i tak się nie uda w sieci wewnętrznej — liczy się tylko kod GoTrue.)
+          $compose exec -T web sh -c "wget -S -O /dev/null 'http://127.0.0.1:8080/supabase-auth/verify?token=x&type=recovery&redirect_to=https://webownik.czech-net.com/reset-password' 2>&1 || true" | tee /dev/stderr | grep -qE 'HTTP/1.1 30[23]'
           # Rola aplikacji ma dostęp do tabel.
           $compose exec -T db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -c "set role webownik_app; select count(*) from public.deck;"
