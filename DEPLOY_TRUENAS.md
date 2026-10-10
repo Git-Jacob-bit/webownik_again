@@ -44,7 +44,7 @@ Maile wysyła kontener `auth` (GoTrue) przez `smtp.resend.com:587` jako `no-repl
 
 ## 4. TrueNAS — dataset na dane
 
-**Datasets → Add Dataset**, np. `tank/apps/webownik`, preset **Apps** (albo *Generic*; nie *SMB* — Postgres musi móc zmienić właściciela plików). Dataset ma być pusty. Kontenery utworzą w nim `db/` (baza) i `db-config/` (klucz pgsodium).
+**Datasets → Add Dataset**, np. `tank/apps/webownik`, preset **Apps** (albo *Generic*; nie *SMB* — Postgres musi móc zmienić właściciela plików). Dataset ma być pusty. Kontener bazy utworzy w nim `db/`. Konfiguracja Postgresa z kluczem pgsodium (`db-config`) jest w wolumenie Dockera tej aplikacji — przy usuwaniu aplikacji nie zaznaczaj usunięcia wolumenów.
 
 Włącz dla niego okresowe snapshoty (**Data Protection → Periodic Snapshot Tasks**).
 

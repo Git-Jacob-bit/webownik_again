@@ -26,7 +26,10 @@ services:
     volumes:
       # Pusty dataset przy pierwszym starcie; potem trzyma całą bazę (snapshoty ZFS!).
       - __DATA_DIR__/db:/var/lib/postgresql/data
-      - __DATA_DIR__/db-config:/etc/postgresql-custom
+      # Wolumen nazwany, nie host path: Docker kopiuje do niego przy pierwszym starcie pliki
+      # dołączane przez postgresql.conf obrazu (pusty bind mount = baza nie wystartuje).
+      # Trzyma też klucz pgsodium — nie usuwaj go razem z aplikacją.
+      - db-config:/etc/postgresql-custom
     networks: [backend]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
@@ -188,6 +191,9 @@ services:
         condition: service_healthy
     networks: [tunnel]
     security_opt: ["no-new-privileges:true"]
+
+volumes:
+  db-config: {}
 
 networks:
   # db, migrate, auth, api — z dostępem do Internetu (SMTP Resend, Turnstile, GitHub).
