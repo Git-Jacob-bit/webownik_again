@@ -49,16 +49,75 @@ jobs:
       - name: Runtime dependency audit
         run: npm audit --omit=dev --audit-level=high
 
-  docker:
+  images:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io/git-jacob-bit
     steps:
       - uses: actions/checkout@v7
-      - name: Build backend image
-        run: docker build -t webownik-api ./backend
-      - name: Build frontend image
-        run: docker build -f frontend/Dockerfile.prod -t webownik-web ./frontend
-      - name: Validate nginx config
+      - name: Build images
         run: |
-          docker run --rm --add-host webownik-api:127.0.0.1 --add-host kong:127.0.0.1 \
-            webownik-web nginx -t
+          label="org.opencontainers.image.source=https://github.com/${{ github.repository }}"
+          docker build --label "$label" -t "$REGISTRY/webownik-api:ci" ./backend
+          docker build --label "$label" -f frontend/Dockerfile.prod \
+            --build-arg VITE_API_URL=/api \
+            --build-arg VITE_TURNSTILE_SITE_KEY="${{ vars.TURNSTILE_SITE_KEY }}" \
+            -t "$REGISTRY/webownik-web:ci" ./frontend
+          docker build --label "$label" -f deploy/migrate/Dockerfile -t "$REGISTRY/webownik-migrate:ci" .
+
+      # Cały stack z deploy/compose.yaml (bez cloudflared) na świeżo zbudowanych obrazach.
+      - name: Render compose for smoke test
+        env:
+          WEBOWNIK_DATA_DIR: ${{ runner.temp }}/webownik-data
+          WEBOWNIK_IMAGE_TAG: ci
+          WEBOWNIK_RESEND_API_KEY: re_ci_dummy
+          # Klucz testowy Cloudflare: weryfikacja Turnstile zawsze przechodzi.
+          WEBOWNIK_TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+          WEBOWNIK_TUNNEL_TOKEN: ci-dummy
+        run: python3 scripts/render-truenas-compose.py --non-interactive --out "$RUNNER_TEMP/compose.yaml"
+      - name: Start stack
+        run: |
+          compose="docker compose -p webownik -f $RUNNER_TEMP/compose.yaml"
+          # Obrazy zewnętrzne z rejestru; własne (:ci) są zbudowane lokalnie i nie istnieją w GHCR.
+          $compose pull db auth
+          $compose up -d --pull never web
+          for _ in $(seq 1 60); do
+            [ "$($compose ps web --format '{{.Health}}')" = "healthy" ] && exit 0
+            sleep 5
+          done
+          echo "web nie osiągnął stanu healthy" >&2
+          exit 1
+      - name: Smoke test
+        run: |
+          compose="docker compose -p webownik -f $RUNNER_TEMP/compose.yaml"
+          set -x
+          # API przez nginx (sprawdza też połączenie z bazą jako webownik_app).
+          $compose exec -T web wget -qO- http://127.0.0.1:8080/api/health | grep -q '"ok"'
+          # Link z maila trafia do GoTrue (303 z błędem tokenu), a nie do SPA.
+          # (busybox wget: pokazuje nagłówki pierwszej odpowiedzi, a przekierowanie na domenę
+          # publiczną i tak się nie uda w sieci wewnętrznej — liczy się tylko kod GoTrue.)
+          $compose exec -T web sh -c "wget -S -O /dev/null 'http://127.0.0.1:8080/supabase-auth/verify?token=x&type=recovery&redirect_to=https://webownik.czech-net.com/reset-password' 2>&1 || true" | tee /dev/stderr | grep -qE 'HTTP/1.1 30[23]'
+          # Rola aplikacji ma dostęp do tabel.
+          $compose exec -T db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "set role webownik_app; select count(*) from public.deck;"
+          # Ponowne uruchomienie migracji jest idempotentne.
+          $compose run --rm --pull never migrate
+      - name: Stack logs
+        if: failure()
+        run: docker compose -p webownik -f "$RUNNER_TEMP/compose.yaml" logs --no-color
+
+      - name: Push to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          sha="sha-${GITHUB_SHA::7}"
+          for name in webownik-api webownik-web webownik-migrate; do
+            for tag in latest "$sha"; do
+              docker tag "$REGISTRY/$name:ci" "$REGISTRY/$name:$tag"
+              docker push "$REGISTRY/$name:$tag"
+            done
+          done

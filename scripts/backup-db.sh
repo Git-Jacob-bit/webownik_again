@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kopia bazy Webownika z kontenera Postgresa self-hosted Supabase.
+# Kopia bazy Webownika z kontenera `db` (deploy/compose.yaml).
 # Obejmuje schematy `public` (dane aplikacji) i `auth` (konta) — jedno bez drugiego
 # nie da się sensownie odtworzyć, bo public."user" wskazuje na auth.users.
 #
@@ -7,8 +7,10 @@
 #   BACKUP_DIR=/mnt/tank/backups/webownik /ścieżka/do/webownik_again/scripts/backup-db.sh
 set -euo pipefail
 
-DB_CONTAINER="${DB_CONTAINER:-supabase-db}"
-DB_USER="${DB_USER:-postgres}"
+# TrueNAS nazywa kontenery ix-<nazwa aplikacji>-<serwis>-1 (aplikacja „webownik”).
+DB_CONTAINER="${DB_CONTAINER:-ix-webownik-db-1}"
+# Superuser obrazu supabase/postgres; hasło bierze z PGPASSWORD w środowisku kontenera.
+DB_USER="${DB_USER:-supabase_admin}"
 DB_NAME="${DB_NAME:-postgres}"
 BACKUP_DIR="${BACKUP_DIR:?Ustaw BACKUP_DIR, np. /mnt/tank/backups/webownik}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"

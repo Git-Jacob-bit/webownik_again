@@ -34,7 +34,7 @@ Przeglądarka ──HTTPS──▶ Cloudflare ──Tunnel──▶ Nginx (front
                                               ├─ /            → statyczny build React
                                               ├─ /api/*       → FastAPI (sieć internal)
                                               └─ /supabase-auth/verify → Supabase Auth (tylko linki z maili)
-FastAPI ──▶ Supabase Auth (Kong) i PostgreSQL (sieć supabase)
+FastAPI ──▶ Supabase Auth (GoTrue) i PostgreSQL (sieć backend)
 ```
 
 * Sesja jest trzymana w ciasteczkach `HttpOnly`, `Secure`, `SameSite=Strict`; zapytania zmieniające dane wymagają tokenu CSRF (double-submit).
@@ -122,4 +122,6 @@ CI (`.github/workflows/ci.yml`) uruchamia testy, lint, build, audyt zależności
 
 ## 📦 Produkcja
 
-Pełna instrukcja dla TrueNAS + Cloudflare Tunnel: [`DEPLOY_TRUENAS.md`](DEPLOY_TRUENAS.md). Kopie zapasowe bazy: [`scripts/backup-db.sh`](scripts/backup-db.sh).
+Produkcja to jedna aplikacja TrueNAS „Install via YAML” z [`deploy/compose.yaml`](deploy/compose.yaml): minimalny Supabase (Postgres + GoTrue), migracje, API, nginx i Cloudflare Tunnel. Obrazy `ghcr.io/git-jacob-bit/webownik-{api,web,migrate}` publikuje CI po teście całego stacku. YAML z sekretami generuje [`scripts/render-truenas-compose.py`](scripts/render-truenas-compose.py).
+
+Pełna instrukcja: [`DEPLOY_TRUENAS.md`](DEPLOY_TRUENAS.md). Kopie zapasowe bazy: [`scripts/backup-db.sh`](scripts/backup-db.sh).

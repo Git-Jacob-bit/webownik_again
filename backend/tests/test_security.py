@@ -123,3 +123,13 @@ def test_session_lookup_is_cached_and_inactive_users_are_blocked(anonymous_clien
     session.add(user)
     session.commit()
     assert anonymous_client.get("/auth/me").status_code == 403
+
+
+def test_auth_url_supports_gateway_and_direct_gotrue():
+    from config import Settings
+
+    base = {"database_url": "sqlite://", "supabase_publishable_key": "p", "supabase_secret_key": "s", "domain": "http://x"}
+    assert Settings(**base, supabase_url="http://kong:8000/").auth_base_url == "http://kong:8000/auth/v1"
+    assert Settings(**base, supabase_url="", supabase_auth_url="http://auth:9999/").auth_base_url == "http://auth:9999"
+    with pytest.raises(ValueError):
+        Settings(**base, supabase_url="", supabase_auth_url="")

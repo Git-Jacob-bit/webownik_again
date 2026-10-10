@@ -1,290 +1,120 @@
-# Webownik — wdrożenie produkcyjne na TrueNAS
+# Webownik — wdrożenie na TrueNAS + Cloudflare Tunnel
 
-Ten dokument jest checklistą wdrożenia Webownika za Cloudflare Tunnel. Przykładową domenę `webownik.example.pl` zastąp własną domeną.
+```
+push na main ──► GitHub Actions: testy · lint · build · test całego stacku ──► obrazy ghcr.io/git-jacob-bit/webownik-{api,web,migrate}
+                                                                                    │ pull
+Internet ──► Cloudflare (DNS, HTTPS, Turnstile) ══ tunel „webownik” ══► cloudflared ──► web (nginx :8080)   [TrueNAS, aplikacja „webownik”]
+                                                                                          ├─ /api/*                → api (FastAPI) ──► db (Postgres)
+                                                                                          └─ /supabase-auth/verify → auth (GoTrue) ──► db, SMTP Resend
+```
 
-## 1. Wymagania
+Cała aplikacja to jedna aplikacja TrueNAS „Install via YAML” — tak jak strona `website`. Zawiera minimalny Supabase: Postgres (`supabase/postgres`) i Auth (`supabase/gotrue`), bez Studio, Konga i pozostałych usług. Żaden port nie jest wystawiony: ruch przychodzi tylko przez tunel.
 
-- TrueNAS SCALE z Dockerem/Apps oraz Docker Compose.
-- Działający self-hosted Supabase (Postgres, Auth i Kong).
-- Domena obsługiwana przez Cloudflare.
-- Konto Resend z dodaną i zweryfikowaną domeną wysyłkową.
-- Cloudflare Turnstile dla domeny aplikacji.
-- Repozytorium GitHub `Git-Jacob-bit/webownik_again`.
+Przykłady zakładają `webownik.czech-net.com` i nadawcę `no-reply@czech-net.com`.
 
-Nie wystawiaj bezpośrednio do Internetu portów Postgresa, Supabase Studio, backendu ani kontenera Auth. Publiczny ruch powinien trafiać wyłącznie do frontendu Nginx przez Cloudflare Tunnel.
+## 1. Cloudflare
 
-## 2. Pobranie aplikacji
+### Turnstile
+**Turnstile → Add widget**: domena `webownik.czech-net.com`, tryb *Managed*.
+- **Site Key** (publiczny) → zmienna GitHub w kroku 2.
+- **Secret Key** → podasz go skryptowi w kroku 5.
+
+### Tunel
+1. **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**, nazwa `webownik`.
+   Osobny tunel, nie ten od strony: gdyby dwa kontenery `cloudflared` używały jednego tokenu, Cloudflare rozkładałby ruch między nie, a konektor strony nie widzi kontenerów Webownika (losowe błędy 502).
+2. Skopiuj **token** (ciąg po `--token`). Niczego nie instaluj — `cloudflared` jest w YAML aplikacji.
+3. **Public Hostname → Add**: Subdomain `webownik` · Domain `czech-net.com` · Service `HTTP` · URL `web:8080`.
+
+## 2. GitHub — obrazy
+
+1. Repo → **Settings → Secrets and variables → Actions → Variables → New repository variable**:
+   `TURNSTILE_SITE_KEY` = Site Key z kroku 1 (wkompilowany we frontend podczas budowania obrazu).
+2. Uruchom CI na `main` (push albo **Actions → CI → Re-run**). Po zielonym przebiegu w **profil → Packages** są `webownik-api`, `webownik-web` i `webownik-migrate`.
+3. Dla każdej z trzech paczek: **Package settings → Change visibility → Public**. Obrazy nie zawierają sekretów (wszystkie są w YAML na TrueNAS), a bez tego TrueNAS potrzebowałby tokenu z `read:packages`.
+
+Po zmianie `TURNSTILE_SITE_KEY` trzeba przebudować obrazy (ponowne uruchomienie CI na `main`).
+
+## 3. Resend
+
+- Domena `czech-net.com` ma status **Verified**.
+- Klucz API z uprawnieniem **Sending access**, ograniczony do tej domeny.
+- W ustawieniach domeny wyłącz **Click tracking** i **Open tracking** — przepisane linki psują jednorazowe tokeny z maili.
+
+Maile wysyła kontener `auth` (GoTrue) przez `smtp.resend.com:587` jako `no-reply@czech-net.com`. Link w mailu ma postać `https://webownik.czech-net.com/supabase-auth/verify?token=…`.
+
+## 4. TrueNAS — dataset na dane
+
+**Datasets → Add Dataset**, np. `tank/apps/webownik`, preset **Apps** (albo *Generic*; nie *SMB* — Postgres musi móc zmienić właściciela plików). Dataset ma być pusty. Kontener bazy utworzy w nim `db/`. Konfiguracja Postgresa z kluczem pgsodium (`db-config`) jest w wolumenie Dockera tej aplikacji — przy usuwaniu aplikacji nie zaznaczaj usunięcia wolumenów.
+
+Włącz dla niego okresowe snapshoty (**Data Protection → Periodic Snapshot Tasks**).
+
+## 5. Wygenerowanie YAML z sekretami
+
+Na swoim komputerze, w katalogu repozytorium:
 
 ```bash
-git clone https://github.com/Git-Jacob-bit/webownik_again.git
-cd webownik_again
-cp .env.production.example .env.production
+python3 scripts/render-truenas-compose.py
 ```
 
-Plik `.env.production` zawiera sekrety i nie może być commitowany. Jest już ignorowany przez Git.
+Skrypt pyta o domenę, nadawcę i katalog danych (`/mnt/tank/apps/webownik`), a klucz Resend, Secret Key Turnstile, token tunelu i opcjonalny token GitHub pobiera bez wyświetlania. Hasła bazy, sekret JWT i klucze `anon`/`service_role` generuje sam.
 
-## 3. Konfiguracja `.env.production`
+Wynik: `~/webownik-truenas.yaml` z uprawnieniami 600. **Zachowaj go** (np. w menedżerze haseł). Hasła bazy są ustawiane przy pierwszym starcie — przy reinstalacji aplikacji użyj tego samego pliku, a nie nowo wygenerowanego.
 
-Ustaw co najmniej:
+## 6. TrueNAS — aplikacja
 
-```env
-ENVIRONMENT=production
-DOMAIN=https://webownik.example.pl
-CORS_ORIGINS=https://webownik.example.pl
-ALLOWED_HOSTS=webownik.example.pl,api
-COOKIE_SECURE=true
-COOKIE_SAMESITE=strict
-TRUSTED_PROXY_CIDRS=172.31.250.0/24
-WEBOWNIK_INTERNAL_SUBNET=172.31.250.0/24
+**Apps → Discover Apps → ⋮ → Install via YAML**, nazwa **`webownik`** (od niej zależą nazwy kontenerów, np. `ix-webownik-db-1`), wklej zawartość `~/webownik-truenas.yaml`.
 
-DATABASE_URL=postgresql://webownik_app:BARDZO_MOCNE_HASLO@db:5432/postgres
-SUPABASE_URL=http://kong:8000
-SUPABASE_PUBLISHABLE_KEY=...
-SUPABASE_SECRET_KEY=...
+Pierwszy start trwa ok. minuty. Kolejność: `db` → `migrate` (migracje i role, kończy się kodem 0) → `auth` → `api` → `web` → `cloudflared`.
 
-TURNSTILE_SECRET_KEY=...
-VITE_TURNSTILE_SITE_KEY=...
+Sprawdzenie:
+- **Apps → webownik**: kontenery *running/healthy*, `migrate` — *exited (0)*;
+- **Zero Trust → Tunnels**: `webownik` ma status **Healthy**;
+- `https://webownik.czech-net.com` się otwiera.
 
-GITHUB_REPOSITORY=Git-Jacob-bit/webownik_again
-GITHUB_TOKEN=...
+## 7. Test końcowy
 
-WEB_BIND_ADDRESS=127.0.0.1
-WEB_PORT=5000
-SUPABASE_NETWORK=supabase_default
-CLOUDFLARE_NETWORK=cloudflare_default
-```
+1. Rejestracja (z Turnstile) → mail od `no-reply@czech-net.com` → link prowadzi na `/email-confirmed` → logowanie działa.
+2. „Nie pamiętam hasła” → mail → link `https://webownik.czech-net.com/supabase-auth/verify?...` → `/reset-password` pozwala ustawić nowe hasło; stare sesje są wylogowane.
+3. `curl -I https://webownik.czech-net.com/` i dowolny plik z `/assets/` zwracają `Content-Security-Policy` i `Strict-Transport-Security`.
+4. `https://webownik.czech-net.com/supabase-auth/settings` zwraca stronę aplikacji, a nie JSON GoTrue (publiczne jest tylko `/verify`).
+5. Tłumaczenie talii przechodzi „W kolejce” → „Tłumaczenie…” → „Gotowe”.
 
-Wymagania:
+Jeśli mail nie przychodzi: **Apps → webownik → auth → Logs** oraz **Resend → Emails/Logs**.
 
-- `DOMAIN` bez końcowego ukośnika.
-- `SUPABASE_SECRET_KEY` nigdy nie może trafić do frontendu.
-- `GITHUB_TOKEN` powinien być fine-grained, ograniczony do jednego repozytorium i uprawnienia `Issues: Read and write`. Docelowo zastąp go GitHub App.
-- Nazwy zewnętrznych sieci sprawdź poleceniem `docker network ls`.
-- `WEBOWNIK_INTERNAL_SUBNET` to podsieć prywatnej sieci nginx → API, a `TRUSTED_PROXY_CIDRS` musi mieć tę samą wartość. Tylko z niej backend przyjmuje nagłówek `CF-Connecting-IP`, więc inne kontenery z sieci Supabase nie mogą podszyć się pod cudzy adres IP i obejść limitów. Jeśli podsieć koliduje z istniejącą siecią (`docker network inspect`), zmień obie wartości.
+## Aktualizacja
 
-## 4. Supabase Auth i publiczne callbacki
+Merge do `main` → zielone CI (obrazy `latest` i `sha-<commit>` są w GHCR) → **Apps → webownik → Stop / Start**. Dzięki `pull_policy: always` pobierane są najnowsze obrazy, a `migrate` nakłada nowe migracje przed startem API.
 
-W pliku `.env` używanym przez self-hosted Supabase ustaw:
+Powrót do starszej wersji: **Edit** aplikacji i zamiana `:latest` na `:sha-abc1234` przy trzech obrazach `webownik-*`.
 
-```env
-SITE_URL=https://webownik.example.pl
-API_EXTERNAL_URL=https://webownik.example.pl/supabase-auth
-ADDITIONAL_REDIRECT_URLS=https://webownik.example.pl/email-confirmed,https://webownik.example.pl/reset-password
-ENABLE_EMAIL_SIGNUP=true
-ENABLE_EMAIL_AUTOCONFIRM=false
+Przed aktualizacją zrób kopię bazy (niżej).
 
-# Ścieżka linku w mailach. Musi wskazywać na publiczną trasę nginx Webownika.
-MAILER_URLPATHS_CONFIRMATION="/supabase-auth/verify"
-MAILER_URLPATHS_INVITE="/supabase-auth/verify"
-MAILER_URLPATHS_RECOVERY="/supabase-auth/verify"
-MAILER_URLPATHS_EMAIL_CHANGE="/supabase-auth/verify"
-```
+## Kopie zapasowe
 
-> **Uwaga:** domyślny `.env` self-hosted Supabase ma `MAILER_URLPATHS_*="/auth/v1/verify"`. Supabase Auth składa link przez `ResolveReference`, więc ścieżka bezwzględna z `MAILER_URLPATHS_*` **zastępuje** ścieżkę z `API_EXTERNAL_URL` (domena zostaje). Bez powyższej zmiany link miałby postać `https://webownik.example.pl/auth/v1/verify?...` i zamiast potwierdzenia/resetu otworzyłby stronę główną aplikacji.
-
-W zależności od wersji obrazu Supabase odpowiadają im ustawienia kontenera Auth:
-
-```yaml
-GOTRUE_SITE_URL: https://webownik.example.pl
-API_EXTERNAL_URL: https://webownik.example.pl/supabase-auth
-GOTRUE_URI_ALLOW_LIST: https://webownik.example.pl/email-confirmed,https://webownik.example.pl/reset-password
-GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
-GOTRUE_MAILER_AUTOCONFIRM: "false"
-GOTRUE_MAILER_URLPATHS_CONFIRMATION: /supabase-auth/verify
-GOTRUE_MAILER_URLPATHS_INVITE: /supabase-auth/verify
-GOTRUE_MAILER_URLPATHS_RECOVERY: /supabase-auth/verify
-GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /supabase-auth/verify
-```
-
-Nginx Webownika udostępnia publicznie tylko `GET /supabase-auth/verify`, potrzebne do kliknięcia linku z wiadomości. Operacje zmieniające dane Auth przechodzą przez backend Webownika.
-
-Po zmianie konfiguracji uruchom ponownie kontener Supabase Auth.
-
-## 5. Resend jako SMTP Supabase
-
-### Konfiguracja Resend
-
-1. Dodaj domenę lub subdomenę wysyłkową, np. `mail.example.pl`.
-2. Dodaj w Cloudflare rekordy DNS pokazane przez Resend (DKIM/SPF oraz wymagany rekord zwrotny).
-3. Poczekaj na status `Verified` w Resend.
-4. Utwórz osobny API key tylko dla Webownika.
-
-### Konfiguracja kontenera Supabase Auth
-
-W oficjalnym `docker-compose.yml` Supabase dane SMTP są przekazywane z `.env` Supabase. Ustaw tam:
-
-```env
-SMTP_HOST=smtp.resend.com
-SMTP_PORT=587
-SMTP_USER=resend
-SMTP_PASS=re_TWOJ_KLUCZ_API
-SMTP_ADMIN_EMAIL=no-reply@mail.example.pl
-SMTP_SENDER_NAME=Webownik
-```
-
-`SMTP_ADMIN_EMAIL` to adres nadawcy — musi być w domenie zweryfikowanej w Resend. Limit częstotliwości (`GOTRUE_SMTP_MAX_FREQUENCY`) jest w oficjalnym compose zakomentowany; odkomentuj go w usłudze `auth` albo dodaj przez `docker-compose.override.yml` (patrz niżej).
-
-Jeśli konfigurujesz kontener Auth bezpośrednio, odpowiadają temu zmienne:
-
-```yaml
-GOTRUE_SMTP_HOST: smtp.resend.com
-GOTRUE_SMTP_PORT: "587"
-GOTRUE_SMTP_USER: resend
-GOTRUE_SMTP_PASS: RE_SECRET_API_KEY
-GOTRUE_SMTP_ADMIN_EMAIL: no-reply@mail.example.pl
-GOTRUE_SMTP_SENDER_NAME: Webownik
-GOTRUE_SMTP_MAX_FREQUENCY: 60s
-```
-
-Port `587` korzysta z STARTTLS. Alternatywnie Resend obsługuje port `465` z implicit TLS, jeżeli konfiguracja obrazu Auth jest do niego przystosowana.
-
-Klucz Resend zapisuj wyłącznie w sekretach/zmiennych środowiskowych Supabase. Nie dodawaj go do `.env.production` Webownika, ponieważ wiadomości wysyła Supabase Auth, a nie frontend ani FastAPI.
-
-### Szablony wiadomości
-
-Aplikacja publikuje gotowe dwujęzyczne szablony:
-
-- `https://webownik.example.pl/email-templates/confirmation.html`
-- `https://webownik.example.pl/email-templates/recovery.html`
-
-Po pierwszym uruchomieniu frontendu możesz wskazać je w Auth. Oficjalny compose Supabase nie przekazuje tych zmiennych, więc dodaj je w `docker-compose.override.yml` obok `docker-compose.yml` Supabase:
-
-```yaml
-services:
-  auth:
-    environment:
-      GOTRUE_SMTP_MAX_FREQUENCY: 60s
-      GOTRUE_MAILER_TEMPLATES_CONFIRMATION: https://webownik.example.pl/email-templates/confirmation.html
-      GOTRUE_MAILER_SUBJECTS_CONFIRMATION: Potwierdź konto w Webowniku / Confirm your Webownik account
-      GOTRUE_MAILER_TEMPLATES_RECOVERY: https://webownik.example.pl/email-templates/recovery.html
-      GOTRUE_MAILER_SUBJECTS_RECOVERY: Reset hasła w Webowniku / Reset your Webownik password
-```
-
-Odpowiednie zmienne kontenera Auth:
-
-```yaml
-GOTRUE_MAILER_TEMPLATES_CONFIRMATION: https://webownik.example.pl/email-templates/confirmation.html
-GOTRUE_MAILER_SUBJECTS_CONFIRMATION: Potwierdź konto w Webowniku / Confirm your Webownik account
-GOTRUE_MAILER_TEMPLATES_RECOVERY: https://webownik.example.pl/email-templates/recovery.html
-GOTRUE_MAILER_SUBJECTS_RECOVERY: Reset hasła w Webowniku / Reset your Webownik password
-```
-
-Supabase Auth pobiera szablony przez HTTP, dlatego adresy muszą być osiągalne podczas restartu Auth. Jeżeli pobranie się nie powiedzie, Supabase użyje szablonu domyślnego. Po zmianie szablonów zrestartuj Auth.
-
-W Resend wyłącz śledzenie linków dla wiadomości uwierzytelniających — przepisywanie URL może uszkodzić jednorazowe linki Supabase.
-
-## 6. Cloudflare Turnstile
-
-1. Utwórz widget dla właściwej domeny.
-2. Publiczny Site Key wpisz jako `VITE_TURNSTILE_SITE_KEY`.
-3. Secret Key wpisz jako `TURNSTILE_SECRET_KEY`.
-4. Po zmianie Site Key przebuduj frontend — jest wstrzykiwany podczas budowania obrazu.
-
-## 7. Cloudflare Tunnel
-
-Najprostszy wariant, gdy `cloudflared` jest w tej samej sieci Docker:
-
-```yaml
-ingress:
-  - hostname: webownik.example.pl
-    service: http://frontend:8080
-  - service: http_status:404
-```
-
-Kontener `cloudflared` i frontend muszą należeć do sieci wskazanej przez `CLOUDFLARE_NETWORK`.
-
-Jeśli Tunnel działa bezpośrednio na hoście TrueNAS, skieruj go na `http://127.0.0.1:5000`. Nie zmieniaj `WEB_BIND_ADDRESS` na `0.0.0.0`, jeśli nie jest to konieczne.
-
-Włącz w Cloudflare tryb SSL/TLS `Full (strict)` i HTTPS. Nie konfiguruj osobnego publicznego hosta dla API ani Supabase.
-
-## 8. Baza danych i migracje
-
-Przed pierwszym uruchomieniem i przy każdej aktualizacji wykonaj nowe migracje z katalogu `supabase/migrations` w kolejności nazw plików. Bez `0005_translation_queue_and_indexes.sql` uruchomienie tłumaczenia kończy się błędem bazy.
-
-Następnie, jako administrator Postgresa, uruchom `docs/create-app-db-role.sql` po zastąpieniu hasła `CHANGE_ME_STRONG_DATABASE_PASSWORD`. Backend musi łączyć się jako `webownik_app`, a nie `postgres`. Konto migracyjne zachowaj oddzielnie i nie przekazuj go kontenerowi aplikacji.
-
-### Kopie zapasowe
-
-`scripts/backup-db.sh` zapisuje zrzut schematów `public` i `auth`, sprawdza go przez `pg_restore --list` i usuwa kopie starsze niż `RETENTION_DAYS` (domyślnie 14 dni). W TrueNAS dodaj zadanie *System → Advanced → Cron Jobs*:
+`scripts/backup-db.sh` zapisuje zrzut schematów `public` i `auth` z kontenera `ix-webownik-db-1`, sprawdza go przez `pg_restore --list` i usuwa kopie starsze niż 14 dni. Skopiuj go na TrueNAS (np. do `/mnt/tank/apps/webownik-tools/`) i dodaj **System → Advanced → Cron Jobs** (użytkownik `root`, codziennie):
 
 ```bash
-BACKUP_DIR=/mnt/tank/backups/webownik /mnt/tank/apps/webownik_again/scripts/backup-db.sh
+BACKUP_DIR=/mnt/tank/backups/webownik /mnt/tank/apps/webownik-tools/backup-db.sh
 ```
 
-Jeśli kontener bazy nazywa się inaczej niż `supabase-db`, ustaw `DB_CONTAINER`. Katalog z kopiami obejmij snapshotami lub replikacją ZFS poza tę samą pulę.
-
-Uruchom skrypt ręcznie przed każdą aktualizacją. Raz na jakiś czas sprawdź odtworzenie na osobnej, pustej instancji Postgresa:
+Katalog kopii obejmij replikacją poza tę samą pulę. Odtworzenie sprawdzaj okresowo na osobnej instancji:
 
 ```bash
 pg_restore --clean --if-exists --no-owner -d postgres webownik-YYYYMMDDTHHMMSSZ.dump
 ```
 
-## 9. Budowa i uruchomienie
+Snapshot ZFS datasetu `tank/apps/webownik` też jest kopią, ale spójną tylko przy zatrzymanej aplikacji — do odtwarzania preferuj zrzut z `pg_dump`.
 
-```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml build --pull
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d
-docker compose --env-file .env.production -f docker-compose.prod.yml ps
-docker compose --env-file .env.production -f docker-compose.prod.yml logs --tail=100 api frontend
-```
+## Monitoring
 
-Sprawdź wynik `docker compose --env-file .env.production -f docker-compose.prod.yml config`. API i frontend powinny mieć `read_only`, `cap_drop: ALL`, limity pamięci/CPU i healthchecki.
+- Monitor dostępności (Uptime Kuma, Healthchecks.io, Cloudflare Health Checks) na `https://webownik.czech-net.com/api/health` — sprawdza też bazę; `/healthz` sprawdza tylko nginx.
+- Logi: **Apps → webownik → <kontener> → Logs**. Nieobsłużone wyjątki API mają pełny traceback.
+- Cron TrueNAS może wysyłać e-mail, gdy backup zakończy się błędem.
 
-Argos Translate i model PL → EN są instalowane w obrazie backendu. Pierwsze tłumaczenie zwiększy użycie RAM; kolejka uruchamia tylko jedno tłumaczenie naraz. Zapewnij backendowi co najmniej około 1–1,5 GB dostępnej pamięci. Kolejka tłumaczeń, limity żądań i cache sesji są trzymane w pamięci procesu, więc uruchamiaj API jako jeden proces (jedna replika, bez `--workers`) — przy skalowaniu trzeba je przenieść do współdzielonego magazynu, np. Redis.
+## Bezpieczeństwo i ograniczenia
 
-## 10. Monitoring
-
-- Ustaw zewnętrzny monitor dostępności (np. Uptime Kuma, Healthchecks.io lub Cloudflare Health Checks) na `https://webownik.example.pl/api/health`. Ten endpoint sprawdza też połączenie z bazą; `/healthz` sprawdza tylko nginx.
-- Logi aplikacji: `docker compose --env-file .env.production -f docker-compose.prod.yml logs -f api`. Nieobsłużone wyjątki trafiają tam z pełnym tracebackiem.
-- Monitoruj też zadanie backupu: cron TrueNAS może wysyłać e-mail przy niezerowym kodzie wyjścia.
-
-## 11. GitHub feedback i changelog
-
-- Formularz tworzy Issue przez backend. Bez `GITHUB_TOKEN` pokaże kontrolowany komunikat o braku konfiguracji.
-- Changelog czyta publiczne GitHub Releases i działa bez tokenu.
-- Aby wpis pojawił się w aplikacji, opublikuj Release, a nie tylko tag lub commit.
-- Opis Release najlepiej dzielić na `Nowości`, `Poprawki` i `Zmiany`.
-- Feedback trafia do **publicznych** Issues. Formularz ostrzega o tym użytkownika, a backend usuwa obrazki i @wzmianki z treści.
-
-## 12. Test końcowy
-
-Po wdrożeniu sprawdź kolejno:
-
-1. Strona otwiera się wyłącznie przez HTTPS.
-2. Rejestracja wymaga Turnstile.
-3. Nowe konto otrzymuje przez Resend wiadomość potwierdzającą.
-4. Link prowadzi do `/email-confirmed`, a następnie możliwe jest logowanie.
-5. „Nie pamiętam hasła” wysyła wiadomość, a `/reset-password` pozwala ustawić nowe hasło.
-6. Rejestracja i reset nie ujawniają tokenów w pasku adresu po załadowaniu ekranu.
-7. `curl -I https://webownik.example.pl/assets/<plik>.js` zwraca nagłówki `Content-Security-Policy` i `Strict-Transport-Security`.
-8. `https://webownik.example.pl/supabase-auth/settings` zwraca 404 (publiczne jest tylko `/supabase-auth/verify`).
-9. Uruchomienie tłumaczenia talii przechodzi przez stany „W kolejce” → „Tłumaczenie…” → „Gotowe”.
-7. Upload TXT i ZIP działa.
-8. Ręczne tłumaczenie PL → EN przechodzi przez statusy kolejki i kończy się poprawnie.
-9. Formularz feedbacku tworzy GitHub Issue.
-10. Opublikowany GitHub Release pojawia się w „Pomoc i aktualizacje”.
-11. Jasny i ciemny motyw oraz PL/EN działają na desktopie i telefonie.
-12. `docker compose ps` pokazuje oba kontenery jako `healthy`.
-13. Przekroczenie limitu pliku lub kwoty użytkownika zwraca kontrolowany błąd 4xx.
-
-## 12. Aktualizacje
-
-```bash
-git pull --ff-only
-docker compose --env-file .env.production -f docker-compose.prod.yml build --pull
-docker compose --env-file .env.production -f docker-compose.prod.yml up -d
-```
-
-Przed aktualizacją: backup bazy. Po aktualizacji: sprawdzenie logów, logowania, wysyłki wiadomości i jednego testowego tłumaczenia.
-
-## 13. Sekrety, których nie wolno commitować
-
-- hasło Postgresa,
-- `SUPABASE_SECRET_KEY`,
-- `TURNSTILE_SECRET_KEY`,
-- `GITHUB_TOKEN`,
-- API key Resend,
-- klucze JWT i pozostałe sekrety self-hosted Supabase,
-- token Cloudflare Tunnel.
-
-Jeżeli którykolwiek sekret przypadkowo trafi do historii Git, samo usunięcie pliku nie wystarczy — sekret trzeba natychmiast unieważnić i wygenerować nowy.
+- Sekrety są tylko w konfiguracji aplikacji TrueNAS i w Twoim `~/webownik-truenas.yaml` — nigdy w repozytorium ani w obrazach.
+- API łączy się z bazą jako `webownik_app` (tylko SELECT/INSERT/UPDATE/DELETE na tabelach aplikacji). Migracje i GoTrue używają własnych ról.
+- Sieć `frontend` (nginx ↔ API/Auth) jest wewnętrzna i ma stałą podsieć `172.31.250.0/24`; tylko z niej API przyjmuje `CF-Connecting-IP`. Jeśli TrueNAS zgłosi *Pool overlaps*, zmień podsieć w YAML w obu miejscach (`networks.frontend` i `TRUSTED_PROXY_CIDRS`).
+- Kolejka tłumaczeń, limity żądań i cache sesji są w pamięci procesu API — uruchamiaj jedną replikę.
+- Feedback z aplikacji trafia do **publicznych** Issues (jeśli ustawiono `GITHUB_TOKEN`; fine-grained, tylko to repo, *Issues: Read and write*).

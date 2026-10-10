@@ -116,7 +116,7 @@ def _auth_request(method: str, path: str, *, json: dict | None = None,
     try:
         response = httpx.request(
             method,
-            f"{settings.supabase_url.rstrip('/')}/auth/v1{path}",
+            f"{settings.auth_base_url}{path}",
             headers=_headers(secret=secret, token=token),
             json=json,
             timeout=15,
