@@ -82,6 +82,8 @@ jobs:
       - name: Start stack
         run: |
           compose="docker compose -p webownik -f $RUNNER_TEMP/compose.yaml"
+          # Obrazy zewnętrzne z rejestru; własne (:ci) są zbudowane lokalnie i nie istnieją w GHCR.
+          $compose pull db auth
           $compose up -d --pull never web
           for _ in $(seq 1 60); do
             [ "$($compose ps web --format '{{.Health}}')" = "healthy" ] && exit 0
