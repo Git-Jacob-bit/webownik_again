@@ -1,16 +1,28 @@
+import os
 from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _is_placeholder(value: str) -> bool:
+    normalized = value.strip().upper()
+    return not normalized or "CHANGE_ME" in normalized or normalized in {"CHANGEME", "REPLACE_ME"}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 
     database_url: str
-    supabase_url: str
-    supabase_publishable_key: str
-    supabase_secret_key: str
+    # Pełny Supabase (Kong/Envoy): SUPABASE_URL, Auth pod {SUPABASE_URL}/auth/v1.
+    # Sam GoTrue bez bramy (deploy/compose.yaml): SUPABASE_AUTH_URL=http://auth:9999.
+    supabase_url: str = ""
+    supabase_auth_url: str = ""
+    # Z bramą Kong/Envoy: klucze API. Bezpośrednio do GoTrue wystarczy SUPABASE_JWT_SECRET
+    # (backend sam podpisuje krótkotrwały token service_role do operacji administracyjnych).
+    supabase_publishable_key: str = ""
+    supabase_secret_key: str = ""
+    supabase_jwt_secret: str = ""
     domain: str
     environment: str = "development"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
@@ -24,11 +36,21 @@ class Settings(BaseSettings):
     github_token: str = ""
 
     @property
+    def auth_base_url(self) -> str:
+        if self.supabase_auth_url.strip():
+            return self.supabase_auth_url.strip().rstrip("/")
+        return f"{self.supabase_url.strip().rstrip('/')}/auth/v1"
+
+    @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
 
     @model_validator(mode="after")
     def validate_production_security(self):
+        if not self.supabase_url.strip() and not self.supabase_auth_url.strip():
+            raise ValueError("Set SUPABASE_URL or SUPABASE_AUTH_URL")
+        if not self.supabase_secret_key.strip() and not self.supabase_jwt_secret.strip():
+            raise ValueError("Set SUPABASE_SECRET_KEY or SUPABASE_JWT_SECRET")
         if not self.is_production:
             return self
 
@@ -47,16 +69,24 @@ class Settings(BaseSettings):
             errors.append("ALLOWED_HOSTS must contain explicit hosts")
         if not self.trusted_proxy_cidrs.strip():
             errors.append("TRUSTED_PROXY_CIDRS must list the nginx network")
-        required_secrets = {
-            "SUPABASE_PUBLISHABLE_KEY": self.supabase_publishable_key,
-            "SUPABASE_SECRET_KEY": self.supabase_secret_key,
-            "TURNSTILE_SECRET_KEY": self.turnstile_secret_key,
-        }
+        required_secrets = {"TURNSTILE_SECRET_KEY": self.turnstile_secret_key}
+        if self.supabase_jwt_secret.strip():
+            required_secrets["SUPABASE_JWT_SECRET"] = self.supabase_jwt_secret
+            if len(self.supabase_jwt_secret.strip()) < 32:
+                errors.append("SUPABASE_JWT_SECRET must have at least 32 characters")
+        else:
+            required_secrets["SUPABASE_SECRET_KEY"] = self.supabase_secret_key
+        if not self.supabase_auth_url.strip():
+            # Brama Kong/Envoy wymaga klucza apikey.
+            required_secrets["SUPABASE_PUBLISHABLE_KEY"] = self.supabase_publishable_key
         for name, value in required_secrets.items():
-            if not value or value.strip().upper() in {"CHANGE_ME", "CHANGEME", "REPLACE_ME"}:
+            if _is_placeholder(value):
                 errors.append(f"{name} must be configured")
         if "CHANGE_ME" in self.database_url.upper():
             errors.append("DATABASE_URL must not contain a placeholder password")
+        # Hasło może być poza URL-em, w zmiennej PGPASSWORD (czyta ją libpq).
+        if "PGPASSWORD" in os.environ and _is_placeholder(os.environ["PGPASSWORD"]):
+            errors.append("PGPASSWORD must be configured")
         if errors:
             raise ValueError("Unsafe production configuration: " + "; ".join(errors))
         return self

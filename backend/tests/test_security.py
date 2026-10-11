@@ -123,3 +123,45 @@ def test_session_lookup_is_cached_and_inactive_users_are_blocked(anonymous_clien
     session.add(user)
     session.commit()
     assert anonymous_client.get("/auth/me").status_code == 403
+
+
+def test_auth_url_supports_gateway_and_direct_gotrue():
+    from config import Settings
+
+    base = {"database_url": "sqlite://", "supabase_publishable_key": "p", "supabase_secret_key": "s", "domain": "http://x"}
+    assert Settings(**base, supabase_url="http://kong:8000/").auth_base_url == "http://kong:8000/auth/v1"
+    assert Settings(**base, supabase_url="", supabase_auth_url="http://auth:9999/").auth_base_url == "http://auth:9999"
+    with pytest.raises(ValueError):
+        Settings(**base, supabase_url="", supabase_auth_url="")
+
+
+def test_service_role_token_is_signed_from_jwt_secret(monkeypatch):
+    import jwt as pyjwt
+    from config import settings
+
+    monkeypatch.setattr(settings, "supabase_secret_key", "")
+    monkeypatch.setattr(settings, "supabase_jwt_secret", "x" * 40)
+
+    headers = auth._headers(secret=True)
+    token = headers["Authorization"].removeprefix("Bearer ")
+    claims = pyjwt.decode(token, "x" * 40, algorithms=["HS256"])
+    assert claims["role"] == "service_role"
+    assert claims["exp"] - claims["iat"] == 60
+
+
+def test_production_rejects_placeholder_secrets(monkeypatch):
+    from config import Settings
+
+    production = {
+        "environment": "production", "domain": "https://w.example.com", "cors_origins": "https://w.example.com",
+        "allowed_hosts": "w.example.com", "cookie_secure": True, "trusted_proxy_cidrs": "10.0.0.0/24",
+        "database_url": "postgresql://webownik_app@db/postgres", "supabase_auth_url": "http://auth:9999",
+        "turnstile_secret_key": "0xreal",
+    }
+    monkeypatch.setenv("PGPASSWORD", "a" * 48)
+    assert Settings(**production, supabase_jwt_secret="s" * 64).supabase_jwt_secret
+    with pytest.raises(ValueError, match="SUPABASE_JWT_SECRET"):
+        Settings(**production, supabase_jwt_secret="CHANGE_ME_JWT_SECRET_PADDING_PADDING")
+    monkeypatch.setenv("PGPASSWORD", "CHANGE_ME_APP_DB_PASSWORD")
+    with pytest.raises(ValueError, match="PGPASSWORD"):
+        Settings(**production, supabase_jwt_secret="s" * 64)
