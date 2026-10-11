@@ -17,7 +17,7 @@ Przykłady zakładają `webownik.czech-net.com` i nadawcę `no-reply@czech-net.c
 ### Turnstile
 **Turnstile → Add widget**: domena `webownik.czech-net.com`, tryb *Managed*.
 - **Site Key** (publiczny) → zmienna GitHub w kroku 2.
-- **Secret Key** → podasz go skryptowi w kroku 5.
+- **Secret Key** → do bloku `x-secrets` w kroku 5.
 
 ### Tunel
 1. **Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared**, nazwa `webownik`.
@@ -48,21 +48,26 @@ Maile wysyła kontener `auth` (GoTrue) przez `smtp.resend.com:587` jako `no-repl
 
 Włącz dla niego okresowe snapshoty (**Data Protection → Periodic Snapshot Tasks**).
 
-## 5. Wygenerowanie YAML z sekretami
+## 5. Uzupełnienie YAML
 
-Na swoim komputerze, w katalogu repozytorium:
+Tak jak przy stronie: weź [`deploy/compose.yaml`](deploy/compose.yaml) (na GitHubie **Raw** → skopiuj całość) i przed wklejeniem uzupełnij **tylko blok `x-secrets` na górze**. Reszta pliku odwołuje się do tych wartości przez kotwice YAML (`*db_password` itd.), więc każdą wpisujesz raz.
 
-```bash
-python3 scripts/render-truenas-compose.py
-```
+| Pole | Skąd |
+| --- | --- |
+| `db_password`, `app_db_password`, `jwt_secret` | trzy różne losowe ciągi: w **System → Shell** TrueNAS `openssl rand -hex 32` (trzy razy) |
+| `resend_api_key` | Resend → API Keys (`re_...`) |
+| `turnstile_secret_key` | Cloudflare → Turnstile → Secret Key |
+| `tunnel_token` | Zero Trust → Tunnels → `webownik` → token |
+| `github_token` | opcjonalnie, puste = feedback wyłączony |
+| `db_data_dir` | ścieżka w datasecie z kroku 4, np. `/mnt/tank/apps/webownik/db` |
 
-Skrypt pyta o domenę, nadawcę i katalog danych (`/mnt/tank/apps/webownik`), a klucz Resend, Secret Key Turnstile, token tunelu i opcjonalny token GitHub pobiera bez wyświetlania. Hasła bazy, sekret JWT i klucze `anon`/`service_role` generuje sam.
+**Zachowaj kopię uzupełnionego bloku** (np. w menedżerze haseł). Hasła bazy są ustawiane przy pierwszym starcie — przy reinstalacji aplikacji muszą być te same. Uzupełnionego pliku nie commituj ani nie wklejaj w czaty/issue.
 
-Wynik: `~/webownik-truenas.yaml` z uprawnieniami 600. **Zachowaj go** (np. w menedżerze haseł). Hasła bazy są ustawiane przy pierwszym starcie — przy reinstalacji aplikacji użyj tego samego pliku, a nie nowo wygenerowanego.
+Jeśli zostawisz którąś wartość `CHANGE_ME_...`, aplikacja nie wystartuje: `migrate` albo `api` zakończy się czytelnym komunikatem w logach.
 
 ## 6. TrueNAS — aplikacja
 
-**Apps → Discover Apps → ⋮ → Install via YAML**, nazwa **`webownik`** (od niej zależą nazwy kontenerów, np. `ix-webownik-db-1`), wklej zawartość `~/webownik-truenas.yaml`.
+**Apps → Discover Apps → ⋮ → Install via YAML**, nazwa **`webownik`** (od niej zależą nazwy kontenerów, np. `ix-webownik-db-1`), wklej uzupełniony plik.
 
 Pierwszy start trwa ok. minuty. Kolejność: `db` → `migrate` (migracje i role, kończy się kodem 0) → `auth` → `api` → `web` → `cloudflared`.
 
@@ -70,6 +75,8 @@ Sprawdzenie:
 - **Apps → webownik**: kontenery *running/healthy*, `migrate` — *exited (0)*;
 - **Zero Trust → Tunnels**: `webownik` ma status **Healthy**;
 - `https://webownik.czech-net.com` się otwiera.
+
+Zmiana sekretu później (np. nowy klucz Resend): **Apps → webownik → Edit**, popraw wartość w `x-secrets`, zapisz. Nie zmieniaj w ten sposób `db_password` ani `app_db_password` działającej instalacji.
 
 ## 7. Test końcowy
 
@@ -113,7 +120,7 @@ Snapshot ZFS datasetu `tank/apps/webownik` też jest kopią, ale spójną tylko 
 
 ## Bezpieczeństwo i ograniczenia
 
-- Sekrety są tylko w konfiguracji aplikacji TrueNAS i w Twoim `~/webownik-truenas.yaml` — nigdy w repozytorium ani w obrazach.
+- Sekrety są tylko w konfiguracji aplikacji TrueNAS (blok `x-secrets`) i w Twojej kopii — nigdy w repozytorium ani w obrazach. Backend sam podpisuje krótkotrwały (60 s) token `service_role` z `jwt_secret`, więc nie ma długożyjących kluczy API do przechowywania.
 - API łączy się z bazą jako `webownik_app` (tylko SELECT/INSERT/UPDATE/DELETE na tabelach aplikacji). Migracje i GoTrue używają własnych ról.
 - Sieć `frontend` (nginx ↔ API/Auth) jest wewnętrzna i ma stałą podsieć `172.31.250.0/24`; tylko z niej API przyjmuje `CF-Connecting-IP`. Jeśli TrueNAS zgłosi *Pool overlaps*, zmień podsieć w YAML w obu miejscach (`networks.frontend` i `TRUSTED_PROXY_CIDRS`).
 - Kolejka tłumaczeń, limity żądań i cache sesji są w pamięci procesu API — uruchamiaj jedną replikę.

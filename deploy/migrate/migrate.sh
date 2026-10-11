@@ -4,6 +4,12 @@ set -eu
 
 : "${POSTGRES_PASSWORD:?}"
 : "${APP_DB_PASSWORD:?}"
+for value in "$POSTGRES_PASSWORD" "$APP_DB_PASSWORD"; do
+  case "$value" in
+    *CHANGE_ME*) echo "Uzupełnij hasła w bloku x-secrets na górze YAML aplikacji." >&2; exit 1 ;;
+  esac
+  [ "${#value}" -ge 16 ] || { echo "Hasła bazy muszą mieć co najmniej 16 znaków." >&2; exit 1; }
+done
 export PGHOST="${PGHOST:-db}" PGPORT="${PGPORT:-5432}" PGDATABASE="${PGDATABASE:-postgres}"
 # supabase_admin to superuser obrazu supabase/postgres (trigger na auth.users, rola z BYPASSRLS).
 export PGUSER=supabase_admin PGPASSWORD="$POSTGRES_PASSWORD"

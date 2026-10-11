@@ -2,7 +2,10 @@ from collections import defaultdict, deque
 from typing import Annotated
 from uuid import UUID
 from urllib.parse import quote
+import base64
 import hashlib
+import hmac
+import json
 import logging
 import secrets
 import threading
@@ -101,9 +104,30 @@ def _clear_session_cookies(response: Response) -> None:
         response.delete_cookie(name, path="/", secure=settings.cookie_secure, samesite=settings.cookie_samesite)
 
 
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _service_role_token() -> str:
+    """Klucz service_role: gotowy z SUPABASE_SECRET_KEY albo podpisany na 60 s z SUPABASE_JWT_SECRET."""
+    if settings.supabase_secret_key:
+        return settings.supabase_secret_key
+    now = int(time.time())
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = _b64url(json.dumps(
+        {"role": "service_role", "iss": "webownik", "iat": now, "exp": now + 60},
+        separators=(",", ":"),
+    ).encode())
+    signature = hmac.new(settings.supabase_jwt_secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest()
+    return f"{header}.{payload}.{_b64url(signature)}"
+
+
 def _headers(secret: bool = False, token: str | None = None) -> dict[str, str]:
-    key = settings.supabase_secret_key if secret else settings.supabase_publishable_key
-    headers = {"apikey": key, "Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json"}
+    key = _service_role_token() if secret else settings.supabase_publishable_key
+    if key:
+        # Brama Kong/Envoy wymaga apikey; sam GoTrue go ignoruje.
+        headers["apikey"] = key
     if token:
         headers["Authorization"] = f"Bearer {token}"
     elif secret:

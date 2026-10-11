@@ -69,16 +69,24 @@ jobs:
             -t "$REGISTRY/webownik-web:ci" ./frontend
           docker build --label "$label" -f deploy/migrate/Dockerfile -t "$REGISTRY/webownik-migrate:ci" .
 
-      # Cały stack z deploy/compose.yaml (bez cloudflared) na świeżo zbudowanych obrazach.
-      - name: Render compose for smoke test
-        env:
-          WEBOWNIK_DATA_DIR: ${{ runner.temp }}/webownik-data
-          WEBOWNIK_IMAGE_TAG: ci
-          WEBOWNIK_RESEND_API_KEY: re_ci_dummy
-          # Klucz testowy Cloudflare: weryfikacja Turnstile zawsze przechodzi.
-          WEBOWNIK_TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
-          WEBOWNIK_TUNNEL_TOKEN: ci-dummy
-        run: python3 scripts/render-truenas-compose.py --non-interactive --out "$RUNNER_TEMP/compose.yaml"
+      # Cały stack z deploy/compose.yaml (bez cloudflared) na świeżo zbudowanych obrazach,
+      # z blokiem x-secrets uzupełnionym tak, jak robi to człowiek przed wklejeniem w TrueNAS.
+      - name: Fill compose for smoke test
+        run: |
+          out="$RUNNER_TEMP/compose.yaml"
+          sed -e "s|CHANGE_ME_DB_PASSWORD|$(openssl rand -hex 32)|" \
+              -e "s|CHANGE_ME_APP_DB_PASSWORD|$(openssl rand -hex 32)|" \
+              -e "s|CHANGE_ME_JWT_SECRET|$(openssl rand -hex 32)|" \
+              -e "s|CHANGE_ME_RESEND_API_KEY|re_ci_dummy|" \
+              -e "s|CHANGE_ME_TURNSTILE_SECRET_KEY|1x0000000000000000000000000000000AA|" \
+              -e "s|CHANGE_ME_TUNNEL_TOKEN|ci-dummy|" \
+              -e "s|/mnt/tank/apps/webownik/db|$RUNNER_TEMP/webownik-db|" \
+              -e "s|\(ghcr.io/git-jacob-bit/webownik-[a-z]*\):latest|\1:ci|" \
+              deploy/compose.yaml > "$out"
+          if grep -nE "CHANGE_ME|webownik-[a-z]+:latest" "$out"; then
+            echo "Nie podmieniono wszystkich wartości" >&2
+            exit 1
+          fi
       - name: Start stack
         run: |
           compose="docker compose -p webownik -f $RUNNER_TEMP/compose.yaml"
@@ -101,6 +109,8 @@ jobs:
           # (busybox wget: pokazuje nagłówki pierwszej odpowiedzi, a przekierowanie na domenę
           # publiczną i tak się nie uda w sieci wewnętrznej — liczy się tylko kod GoTrue.)
           $compose exec -T web sh -c "wget -S -O /dev/null 'http://127.0.0.1:8080/supabase-auth/verify?token=x&type=recovery&redirect_to=https://webownik.czech-net.com/reset-password' 2>&1 || true" | tee /dev/stderr | grep -qE 'HTTP/1.1 30[23]'
+          # GoTrue przyjmuje token service_role podpisany przez API z JWT_SECRET (operacje admina).
+          $compose exec -T api python -c "from routers.auth import _auth_request; print(len(_auth_request('GET', '/admin/users', secret=True)['users']))"
           # Rola aplikacji ma dostęp do tabel.
           $compose exec -T db psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
             -c "set role webownik_app; select count(*) from public.deck;"

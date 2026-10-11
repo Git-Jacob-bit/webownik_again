@@ -1,13 +1,27 @@
-# Webownik — TrueNAS SCALE: Apps → Discover Apps → ⋮ → Install via YAML.
+# Webownik — TrueNAS SCALE (24.10+): Apps → Discover Apps → ⋮ → Install via YAML, nazwa: webownik.
+# Wklej cały plik i uzupełnij TYLKO blok x-secrets poniżej (patrz DEPLOY_TRUENAS.md).
 #
-# NIE wklejaj tego pliku bezpośrednio. Wygeneruj gotową wersję z sekretami:
-#   python3 scripts/render-truenas-compose.py
-# (patrz DEPLOY_TRUENAS.md). Skrypt wypełnia placeholdery w podwójnych podkreślnikach.
-#
-# Minimalny Supabase: tylko Postgres (supabase/postgres) i Auth (GoTrue), bez Studio/Kong.
+# Minimalny Supabase: Postgres (supabase/postgres) + Auth (GoTrue), bez Studio/Kong.
 #
 #   cloudflared ─tunnel─▶ web (nginx) ─frontend─▶ api (FastAPI) ─backend─▶ db
 #                          └──── /supabase-auth/verify ──▶ auth (GoTrue) ─▶ db, SMTP Resend
+
+x-secrets:
+  # Trzy losowe hasła — w Shellu TrueNAS: openssl rand -hex 32 (trzy razy, każde inne).
+  # Ustawiane przy pierwszym starcie: potem ich nie zmieniaj (zachowaj kopię tego bloku).
+  db_password: &db_password "CHANGE_ME_DB_PASSWORD"
+  app_db_password: &app_db_password "CHANGE_ME_APP_DB_PASSWORD"
+  jwt_secret: &jwt_secret "CHANGE_ME_JWT_SECRET"
+  # Resend → API Keys (Sending access), zaczyna się od re_
+  resend_api_key: &resend_api_key "CHANGE_ME_RESEND_API_KEY"
+  # Cloudflare → Turnstile → widget webownik.czech-net.com → Secret Key
+  turnstile_secret_key: &turnstile_secret_key "CHANGE_ME_TURNSTILE_SECRET_KEY"
+  # Cloudflare Zero Trust → Networks → Tunnels → webownik → token (ciąg po --token)
+  tunnel_token: &tunnel_token "CHANGE_ME_TUNNEL_TOKEN"
+  # Opcjonalnie: token GitHub do formularza feedbacku (puste = feedback wyłączony)
+  github_token: &github_token ""
+  # Pusty katalog na datasecie na pliki bazy danych
+  db_data_dir: &db_data_dir "/mnt/tank/apps/webownik/db"
 
 services:
   db:
@@ -20,12 +34,15 @@ services:
       PGPORT: "5432"
       POSTGRES_DB: postgres
       PGDATABASE: postgres
-      POSTGRES_PASSWORD: "__POSTGRES_PASSWORD__"
-      PGPASSWORD: "__POSTGRES_PASSWORD__"
+      POSTGRES_PASSWORD: *db_password
+      PGPASSWORD: *db_password
       JWT_EXP: "3600"
     volumes:
-      # Pusty dataset przy pierwszym starcie; potem trzyma całą bazę (snapshoty ZFS!).
-      - __DATA_DIR__/db:/var/lib/postgresql/data
+      - type: bind
+        source: *db_data_dir
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: true
       # Wolumen nazwany, nie host path: Docker kopiuje do niego przy pierwszym starcie pliki
       # dołączane przez postgresql.conf obrazu (pusty bind mount = baza nie wystartuje).
       # Trzyma też klucz pgsodium — nie usuwaj go razem z aplikacją.
@@ -40,12 +57,12 @@ services:
 
   # Migracje aplikacji i hasła ról. Kończy się po kilku sekundach przy każdym starcie.
   migrate:
-    image: ghcr.io/git-jacob-bit/webownik-migrate:__IMAGE_TAG__
+    image: ghcr.io/git-jacob-bit/webownik-migrate:latest
     pull_policy: always
     restart: "no"
     environment:
-      POSTGRES_PASSWORD: "__POSTGRES_PASSWORD__"
-      APP_DB_PASSWORD: "__APP_DB_PASSWORD__"
+      POSTGRES_PASSWORD: *db_password
+      APP_DB_PASSWORD: *app_db_password
     depends_on:
       db:
         condition: service_healthy
@@ -61,18 +78,19 @@ services:
     environment:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: "9999"
-      API_EXTERNAL_URL: https://__DOMAIN__/supabase-auth
+      API_EXTERNAL_URL: https://webownik.czech-net.com/supabase-auth
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:__POSTGRES_PASSWORD__@db:5432/postgres
-      GOTRUE_SITE_URL: https://__DOMAIN__
-      GOTRUE_URI_ALLOW_LIST: https://__DOMAIN__/email-confirmed,https://__DOMAIN__/reset-password
+      # Hasło z PGPASSWORD (pgx czyta je, gdy nie ma go w URL-u).
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin@db:5432/postgres
+      PGPASSWORD: *db_password
+      GOTRUE_SITE_URL: https://webownik.czech-net.com
+      GOTRUE_URI_ALLOW_LIST: https://webownik.czech-net.com/email-confirmed,https://webownik.czech-net.com/reset-password
       GOTRUE_DISABLE_SIGNUP: "false"
       GOTRUE_JWT_ADMIN_ROLES: service_role
       GOTRUE_JWT_AUD: authenticated
-      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_EXP: "3600"
-      GOTRUE_JWT_SECRET: "__JWT_SECRET__"
-      GOTRUE_JWT_ISSUER: https://__DOMAIN__/supabase-auth
+      GOTRUE_JWT_SECRET: *jwt_secret
+      GOTRUE_JWT_ISSUER: https://webownik.czech-net.com/supabase-auth
       GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
       GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
       GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
@@ -90,12 +108,12 @@ services:
       GOTRUE_SMTP_HOST: smtp.resend.com
       GOTRUE_SMTP_PORT: "587"
       GOTRUE_SMTP_USER: resend
-      GOTRUE_SMTP_PASS: "__RESEND_API_KEY__"
-      GOTRUE_SMTP_ADMIN_EMAIL: __MAIL_FROM__
+      GOTRUE_SMTP_PASS: *resend_api_key
+      GOTRUE_SMTP_ADMIN_EMAIL: no-reply@czech-net.com
       GOTRUE_SMTP_SENDER_NAME: Webownik
       GOTRUE_SMTP_MAX_FREQUENCY: 60s
       # Bezwzględna ścieżka zastępuje ścieżkę API_EXTERNAL_URL (url.ResolveReference),
-      # więc link w mailu to https://__DOMAIN__/supabase-auth/verify?...
+      # więc link w mailu to https://webownik.czech-net.com/supabase-auth/verify?...
       GOTRUE_MAILER_URLPATHS_CONFIRMATION: /supabase-auth/verify
       GOTRUE_MAILER_URLPATHS_INVITE: /supabase-auth/verify
       GOTRUE_MAILER_URLPATHS_RECOVERY: /supabase-auth/verify
@@ -114,7 +132,7 @@ services:
       retries: 6
 
   api:
-    image: ghcr.io/git-jacob-bit/webownik-api:__IMAGE_TAG__
+    image: ghcr.io/git-jacob-bit/webownik-api:latest
     pull_policy: always
     restart: unless-stopped
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -125,19 +143,20 @@ services:
         condition: service_healthy
     environment:
       ENVIRONMENT: production
-      DOMAIN: https://__DOMAIN__
-      CORS_ORIGINS: https://__DOMAIN__
-      ALLOWED_HOSTS: __DOMAIN__,127.0.0.1
+      DOMAIN: https://webownik.czech-net.com
+      CORS_ORIGINS: https://webownik.czech-net.com
+      ALLOWED_HOSTS: webownik.czech-net.com,127.0.0.1
       COOKIE_SECURE: "true"
       COOKIE_SAMESITE: strict
-      TRUSTED_PROXY_CIDRS: __INTERNAL_SUBNET__
-      DATABASE_URL: postgresql://webownik_app:__APP_DB_PASSWORD__@db:5432/postgres
+      TRUSTED_PROXY_CIDRS: 172.31.250.0/24
+      # Hasło z PGPASSWORD (libpq czyta je, gdy nie ma go w URL-u).
+      DATABASE_URL: postgresql://webownik_app@db:5432/postgres
+      PGPASSWORD: *app_db_password
       SUPABASE_AUTH_URL: http://auth:9999
-      SUPABASE_PUBLISHABLE_KEY: "__ANON_KEY__"
-      SUPABASE_SECRET_KEY: "__SERVICE_ROLE_KEY__"
-      TURNSTILE_SECRET_KEY: "__TURNSTILE_SECRET_KEY__"
+      SUPABASE_JWT_SECRET: *jwt_secret
+      TURNSTILE_SECRET_KEY: *turnstile_secret_key
       GITHUB_REPOSITORY: Git-Jacob-bit/webownik_again
-      GITHUB_TOKEN: "__GITHUB_TOKEN__"
+      GITHUB_TOKEN: *github_token
     networks:
       backend: {}
       frontend:
@@ -159,7 +178,7 @@ services:
       start_period: 30s
 
   web:
-    image: ghcr.io/git-jacob-bit/webownik-web:__IMAGE_TAG__
+    image: ghcr.io/git-jacob-bit/webownik-web:latest
     pull_policy: always
     restart: unless-stopped
     depends_on:
@@ -184,8 +203,8 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      # Osobny tunel tylko dla Webownika (Public Hostname: __DOMAIN__ → HTTP web:8080).
-      TUNNEL_TOKEN: "__TUNNEL_TOKEN__"
+      # Osobny tunel tylko dla Webownika (Public Hostname: webownik.czech-net.com → HTTP web:8080).
+      TUNNEL_TOKEN: *tunnel_token
     depends_on:
       web:
         condition: service_healthy
@@ -198,11 +217,12 @@ volumes:
 networks:
   # db, migrate, auth, api — z dostępem do Internetu (SMTP Resend, Turnstile, GitHub).
   backend: {}
-  # web ↔ api/auth. Bez wyjścia do Internetu, stała podsieć dla TRUSTED_PROXY_CIDRS.
+  # web ↔ api/auth. Bez wyjścia do Internetu, stała podsieć = TRUSTED_PROXY_CIDRS w api.
+  # Jeśli TrueNAS zgłosi „Pool overlaps”, zmień podsieć tu i w TRUSTED_PROXY_CIDRS.
   frontend:
     internal: true
     ipam:
       config:
-        - subnet: __INTERNAL_SUBNET__
+        - subnet: 172.31.250.0/24
   # web ↔ cloudflared.
   tunnel: {}

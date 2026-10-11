@@ -32,5 +32,3 @@ build/
 dist/
 .tools/
 
-# Wygenerowany YAML z sekretami (scripts/render-truenas-compose.py)
-*-truenas.yaml

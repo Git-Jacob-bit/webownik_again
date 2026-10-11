@@ -30,10 +30,15 @@ anything else is rate limited by its real source address.
 
 ## Secrets
 
-`scripts/render-truenas-compose.py` generates the database passwords, the JWT secret and the
-`anon`/`service_role` keys, and reads the Resend API key, Turnstile secret, tunnel token and
-optional GitHub token without echo. The rendered file is written outside the repository with mode
-600. Keep it in an encrypted secret store; never commit it or paste it into chats or issues.
+All secrets live in the `x-secrets` block at the top of `deploy/compose.yaml` and are referenced
+through YAML anchors: two database passwords, the GoTrue JWT secret (random, 32+ characters), the
+Resend API key, the Turnstile secret, the tunnel token and an optional GitHub token. The filled-in
+file exists only in the TrueNAS app configuration and the operator's secret store.
+
+There are no long-lived Supabase API keys: FastAPI signs a 60-second `service_role` JWT with the
+JWT secret for admin calls (account deletion), and GoTrue does not need the `anon` key without a
+gateway. Database passwords are passed via `PGPASSWORD` instead of connection URLs. Placeholder
+values (`CHANGE_ME_*`) make `migrate` and the API refuse to start.
 
 Do not reuse keys printed by the local Supabase CLI.
 

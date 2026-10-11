@@ -122,6 +122,6 @@ CI (`.github/workflows/ci.yml`) uruchamia testy, lint, build, audyt zależności
 
 ## 📦 Produkcja
 
-Produkcja to jedna aplikacja TrueNAS „Install via YAML” z [`deploy/compose.yaml`](deploy/compose.yaml): minimalny Supabase (Postgres + GoTrue), migracje, API, nginx i Cloudflare Tunnel. Obrazy `ghcr.io/git-jacob-bit/webownik-{api,web,migrate}` publikuje CI po teście całego stacku. YAML z sekretami generuje [`scripts/render-truenas-compose.py`](scripts/render-truenas-compose.py).
+Produkcja to jedna aplikacja TrueNAS „Install via YAML” z [`deploy/compose.yaml`](deploy/compose.yaml): minimalny Supabase (Postgres + GoTrue), migracje, API, nginx i Cloudflare Tunnel. Obrazy `ghcr.io/git-jacob-bit/webownik-{api,web,migrate}` publikuje CI po teście całego stacku. Wkleja się go w TrueNAS tak jak stronę `website`, uzupełniając tylko blok `x-secrets` na górze pliku.
 
 Pełna instrukcja: [`DEPLOY_TRUENAS.md`](DEPLOY_TRUENAS.md). Kopie zapasowe bazy: [`scripts/backup-db.sh`](scripts/backup-db.sh).
