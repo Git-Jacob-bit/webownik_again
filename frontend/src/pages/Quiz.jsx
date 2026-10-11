@@ -98,6 +98,7 @@ const Quiz = () => {
   const [selectedAnswerIds, setSelectedAnswerIds] = useState(new Set());
   const [feedback, setFeedback] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [questionError, setQuestionError] = useState(false);
   const [exitModalOpen, setExitModalOpen] = useState(false);
   const [exitChoice, setExitChoice] = useState('stay');
   const [summary, setSummary] = useState(null);
@@ -113,9 +114,22 @@ const Quiz = () => {
 
   // --- INITIAL LOAD ---
   useEffect(() => {
+    // Tłumaczenie uruchamiamy tylko, gdy jeszcze go nie ma — błąd (np. pełna kolejka) nie blokuje quizu.
+    const ensureTranslation = async () => {
+      try {
+        const { data } = await api.get('/decks/mine');
+        const deck = data.find(item => String(item.id) === String(deckId));
+        if (deck && !['ready', 'queued', 'processing'].includes(deck.translation_status)) {
+          await api.post(`/decks/${deckId}/translate`);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
     const fetchStatus = async () => {
       try {
-        if (language === 'en') await api.post(`/decks/${deckId}/translate`);
+        if (language === 'en') ensureTranslation();
         // ZMIANA: api.get i krótka ścieżka bez headerów
         const res = await api.get(`/quiz/status/${deckId}`);
         
@@ -213,6 +227,7 @@ const Quiz = () => {
   const loadNextQuestion = async () => {
     setSelectedAnswerIds(new Set());
     setFeedback(null);
+    setQuestionError(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
@@ -228,7 +243,12 @@ const Quiz = () => {
       }
       setQuestion(res.data.question);
       applyProgress(res.data);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      setQuestion(null);
+      setQuestionError(true);
+      toast.error("Nie udało się pobrać pytania.");
+    }
   };
 
   const toggleAnswer = (id) => {
@@ -532,6 +552,14 @@ const Quiz = () => {
             <div className="mt-auto hidden rounded-xl border border-blue-500/10 bg-blue-500/5 p-4 text-xs leading-relaxed text-slate-400 lg:block"><strong className="mb-1 block text-blue-300">Jak działa opanowanie?</strong>Dwie poprawne odpowiedzi z rzędu kończą naukę pytania. Błąd zeruje serię i odkłada pytanie dalej.</div>
             <div className="mt-3 hidden grid-cols-2 gap-2 text-[11px] text-slate-500 lg:grid"><span><kbd className="text-slate-300">1–9</kbd> odpowiedzi</span><span><kbd className="text-slate-300">Spacja</kbd> zatwierdź</span><span><kbd className="text-slate-300">P</kbd> pauza</span><span><kbd className="text-slate-300">Esc</kbd> wyjście</span></div>
           </aside>
+
+          {questionError && !question && (
+            <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-center shadow-xl lg:col-start-1 lg:row-start-2">
+              <AlertCircle className="mx-auto h-8 w-8 text-red-400" />
+              <p className="mt-3 font-semibold">Nie udało się pobrać pytania.</p>
+              <button onClick={loadNextQuestion} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-bold hover:bg-blue-500"><RotateCcw className="h-5 w-5" /> Spróbuj ponownie</button>
+            </div>
+          )}
 
           <AnimatePresence mode="wait">
             {question && (

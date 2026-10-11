@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, ExternalLink, History, Loader2, MessageSquar
 import { toast } from 'react-toastify';
 import api from '../api';
 import { useLanguage } from '../context/LanguageContext';
+import { getErrorMessage } from '../utils/errors';
 
 const HelpCenter = ({ open, onClose }) => {
   const { language, t } = useLanguage();
@@ -40,7 +41,7 @@ const HelpCenter = ({ open, onClose }) => {
       setForm({ category: 'bug', title: '', description: '', includeTechnical: true });
       toast.success(t('Feedback został wysłany. Dziękujemy!'));
     } catch (error) {
-      toast.error(error.response?.data?.detail || t('Nie udało się wysłać feedbacku.'));
+      toast.error(getErrorMessage(error, t('Nie udało się wysłać feedbacku.')));
     } finally {
       setSending(false);
     }

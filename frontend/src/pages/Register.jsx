@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import InlineMessage from '../components/InlineMessage';
 import TurnstileWidget from '../components/TurnstileWidget';
+import { getErrorMessage } from '../utils/errors';
 
 function Register() {
   const [email, setEmail] = useState('');
@@ -37,14 +38,7 @@ function Register() {
       navigate('/login');
     } catch (err) {
       console.error(err);
-      const detail = err.response?.data?.detail;
-      if (Array.isArray(detail)) {
-        setError(detail.map(item => item.msg).filter(Boolean).join(' ') || "Niepoprawne dane formularza.");
-      } else if (typeof detail === 'string') {
-        setError(detail);
-      } else {
-        setError("Wystąpił błąd rejestracji.");
-      }
+      setError(getErrorMessage(err, "Wystąpił błąd rejestracji."));
     } finally {
       setIsLoading(false);
     }

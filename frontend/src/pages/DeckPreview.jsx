@@ -167,6 +167,19 @@ const DeckPreview = () => {
     </div>
   );
 
+  if (!deck) return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-white">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900/80 p-8 text-center">
+        <h1 className="text-2xl font-bold">Nie udało się załadować zestawu</h1>
+        <p className="mt-2 text-sm text-slate-400">Zestaw nie istnieje albo wystąpił problem z połączeniem.</p>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <button onClick={() => navigate('/decks')} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-700 py-3 font-medium text-slate-300 hover:bg-slate-800"><ArrowLeft className="h-5 w-5" /> Wróć do zestawów</button>
+          <button onClick={() => { setLoading(true); fetchData(); }} className="flex-1 rounded-xl bg-blue-600 py-3 font-medium hover:bg-blue-500">Spróbuj ponownie</button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <AnimatedPage>
       <div className="min-h-screen bg-slate-950 text-white font-sans p-8">
