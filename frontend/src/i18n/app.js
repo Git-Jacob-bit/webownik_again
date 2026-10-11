@@ -14,16 +14,16 @@ const app = {
 
   // Dzisiaj
   'Nie udało się załadować pulpitu. Odśwież stronę, żeby spróbować ponownie.': 'Could not load the dashboard. Refresh the page to try again.',
-  '{total} pytań: {m} opanowanych, {k} sprawia kłopot, {n} do nauki': '{total} questions: {m} mastered, {k} troublesome, {n} still to learn',
+  '{total} {total|pytanie|pytania|pytań}: opanowane {m}, sprawiają kłopot {k}, do nauki {n}': '{total} {total|question|questions}: {m} mastered, {k} troublesome, {n} still to learn',
   'Opanowane {n}': 'Mastered {n}',
   'Sprawiają kłopot {n}': 'Troublesome {n}',
   'Do nauki {n}': 'To learn {n}',
   'Zadanie zrobione.': 'Task done.',
   'Nie udało się zapisać zadania.': 'Could not save the task.',
   '{title}, przerwane po {min} min': '{title}, paused after {min} min',
-  'Jeszcze {n} pytań do opanowania.': '{n} questions left to master.',
+  'Jeszcze {n} {n|pytanie|pytania|pytań} do opanowania.': '{n} {n|question|questions} left to master.',
   'Wszystko opanowane.': 'Everything mastered.',
-  '{m} masz już opanowane.': 'You have already mastered {m}.',
+  'Opanowane masz już: {m}.': 'You have already mastered {m}.',
   'Te, które sprawiają kłopot, wracają częściej, aż zaskoczą.': 'The troublesome ones come back more often until they click.',
   'Wznów naukę': 'Resume studying',
   'Przejrzyj pytania': 'Review questions',
@@ -35,7 +35,7 @@ const app = {
   'Zestaw w trakcie nauki': 'Deck in progress',
   'Opanowane: {m} z {total}': 'Mastered: {m} of {total}',
   'W kolejce: {n}': 'In queue: {n}',
-  '{title}, {n} pytań': '{title}, {n} questions',
+  '{title}, {n} {n|pytanie|pytania|pytań}': '{title}, {n} {n|question|questions}',
   'Karta odpowiedzi': 'Answer sheet',
   'Wszystkie zadania': 'All tasks',
   'Na dziś': 'For today',
@@ -45,7 +45,7 @@ const app = {
   'Wgraj nowy zestaw': 'Upload a new deck',
   'Wgraj pliki .txt, folder albo archiwum .zip': 'Upload .txt files, a folder or a .zip archive',
   'Twoje zestawy': 'Your decks',
-  '{total} pytań, {m} opanowanych': '{total} questions, {m} mastered',
+  '{total} {total|pytanie|pytania|pytań}, opanowane: {m}': '{total} {total|question|questions}, {m} mastered',
   'Jeszcze nie zaczęty': 'Not started yet',
 
   // Zadania

@@ -31,12 +31,12 @@ const AnswerSheet = ({ progress, t }) => {
         <div
           className="grid max-w-[540px] grid-cols-10 gap-1.5"
           role="img"
-          aria-label={t('{total} pytań: {m} opanowanych, {k} sprawia kłopot, {n} do nauki', { total: progress.initial, m: progress.mastered, k: progress.struggling, n: learning })}
+          aria-label={t('{total} {total|pytanie|pytania|pytań}: opanowane {m}, sprawiają kłopot {k}, do nauki {n}', { total: progress.initial, m: progress.mastered, k: progress.struggling, n: learning })}
         >
           {states.map((state, index) => <span key={index} className={`aspect-square rounded-[4px] ${look[state]}`} />)}
         </div>
       ) : (
-        <div className="flex h-4 max-w-[540px] gap-[2px] overflow-hidden rounded-sm" role="img" aria-label={t('{total} pytań: {m} opanowanych, {k} sprawia kłopot, {n} do nauki', { total: progress.initial, m: progress.mastered, k: progress.struggling, n: learning })}>
+        <div className="flex h-4 max-w-[540px] gap-[2px] overflow-hidden rounded-sm" role="img" aria-label={t('{total} {total|pytanie|pytania|pytań}: opanowane {m}, sprawiają kłopot {k}, do nauki {n}', { total: progress.initial, m: progress.mastered, k: progress.struggling, n: learning })}>
           {progress.mastered > 0 && <span className="bg-accent" style={{ flex: progress.mastered }} />}
           {progress.struggling > 0 && <span className="bg-warn" style={{ flex: progress.struggling }} />}
           {learning > 0 && <span className="bg-ink/15" style={{ flex: learning }} />}
@@ -107,10 +107,10 @@ const TodayView = ({ onCountsChange }) => {
             <>
               <p className="text-base text-muted">{t('{title}, przerwane po {min} min', { title: localizedTitle(resume.deck), min: minutes })}</p>
               <h1 className="font-slab text-[40px] font-bold leading-none tracking-[-0.02em] sm:text-[56px] xl:text-[72px]">
-                {left > 0 ? t('Jeszcze {n} pytań do opanowania.', { n: left }) : t('Wszystko opanowane.')}
+                {left > 0 ? t('Jeszcze {n} {n|pytanie|pytania|pytań} do opanowania.', { n: left }) : t('Wszystko opanowane.')}
               </h1>
               <p className="max-w-[480px] text-[17px] leading-relaxed text-muted">
-                {t('{m} masz już opanowane.', { m: resume.p.mastered })}
+                {t('Opanowane masz już: {m}.', { m: resume.p.mastered })}
                 {resume.p.struggling > 0 && ` ${t('Te, które sprawiają kłopot, wracają częściej, aż zaskoczą.')}`}
               </p>
               <div className="flex flex-wrap items-center gap-6">
@@ -147,7 +147,7 @@ const TodayView = ({ onCountsChange }) => {
       <section className="flex flex-wrap gap-x-14 gap-y-12">
         {resume && (
           <div className="flex min-w-0 flex-[1_1_480px] flex-col gap-5">
-            <SectionHeading aside={<span className="text-sm text-muted">{t('{title}, {n} pytań', { title: localizedTitle(resume.deck), n: resume.p.initial })}</span>}>{t('Karta odpowiedzi')}</SectionHeading>
+            <SectionHeading aside={<span className="text-sm text-muted">{t('{title}, {n} {n|pytanie|pytania|pytań}', { title: localizedTitle(resume.deck), n: resume.p.initial })}</span>}>{t('Karta odpowiedzi')}</SectionHeading>
             <AnswerSheet progress={resume.p} t={t} />
           </div>
         )}
@@ -185,7 +185,7 @@ const TodayView = ({ onCountsChange }) => {
               <button key={deck.id} type="button" onClick={() => navigate(`/decks/${deck.id}`)} className="on-paper flex flex-col gap-2.5 rounded-[4px] bg-card px-[18px] pb-[18px] text-left text-card-ink shadow-stack transition hover:-translate-x-px hover:-translate-y-px">
                 <span className="-mx-[18px] mb-2 h-[3px] bg-pen" />
                 <span className="font-slab text-[22px] font-bold leading-tight">{localizedTitle(deck)}</span>
-                <span className="text-sm text-card-muted">{p ? t('{total} pytań, {m} opanowanych', { total: p.initial, m: p.mastered }) : t('Jeszcze nie zaczęty')}</span>
+                <span className="text-sm text-card-muted">{p ? t('{total} {total|pytanie|pytania|pytań}, opanowane: {m}', { total: p.initial, m: p.mastered }) : t('Jeszcze nie zaczęty')}</span>
                 <MasteryBar mastered={p?.mastered || 0} total={p?.initial || 1} />
               </button>
             );

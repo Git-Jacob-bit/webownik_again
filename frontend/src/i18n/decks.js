@@ -2,7 +2,7 @@
 const decks = {
   'Nie udało się pobrać zestawów.': 'Could not load decks.',
   'Wybrany folder nie zawiera plików .txt.': 'The selected folder has no .txt files.',
-  'Pominięto {n} plików innych niż .txt.': 'Skipped {n} files that are not .txt.',
+  'Pominięto {n} {n|plik inny|pliki inne|plików innych} niż .txt.': 'Skipped {n} {n|file|files} that {n|is|are} not .txt.',
   'Dozwolone są tylko pliki .txt lub archiwum .zip.': 'Only .txt files or a .zip archive are allowed.',
   'Archiwum ZIP wybierz osobno, bez dodatkowych plików.': 'Choose the ZIP archive on its own, without other files.',
   'Podaj nazwę zestawu.': 'Enter a deck name.',

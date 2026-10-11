@@ -171,7 +171,7 @@ const DeckPreview = () => {
   const status = deck.translation_status;
   const percent = deck.translation_total ? Math.round((deck.translation_completed / deck.translation_total) * 100) : 0;
   const translationLabel = status === 'ready'
-    ? t('Gotowa, {done} z {total} pytań', { done: deck.translation_completed || 0, total: deck.translation_total || 0 })
+    ? t('Gotowa, {done} z {total} {total|pytania|pytań|pytań}', { done: deck.translation_completed || 0, total: deck.translation_total || 0 })
     : status === 'failed' ? t('Błąd tłumaczenia')
       : status === 'processing' ? t('Tłumaczymy… {percent}%', { percent })
         : status === 'queued' ? t('W kolejce do tłumaczenia')

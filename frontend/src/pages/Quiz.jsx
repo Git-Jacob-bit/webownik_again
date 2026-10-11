@@ -319,8 +319,10 @@ const Quiz = () => {
     }
   }, [deckId]);
 
+  // Po zakończeniu sesji backend nie ma już aktywnej sesji – heartbeat dawałby 404.
+  const sessionFinished = Boolean(feedback?.finished);
   useEffect(() => {
-    if (view !== 'quiz' || isPaused) return undefined;
+    if (view !== 'quiz' || isPaused || sessionFinished) return undefined;
     const heartbeat = window.setInterval(async () => {
       try {
         const res = await api.post(`/quiz/heartbeat/${deckId}`);
@@ -328,7 +330,7 @@ const Quiz = () => {
       } catch (err) { console.error(err); }
     }, 10000);
     return () => window.clearInterval(heartbeat);
-  }, [view, isPaused, deckId]);
+  }, [view, isPaused, deckId, sessionFinished]);
 
   useEffect(() => {
     const pauseWhenHidden = () => {
@@ -472,7 +474,7 @@ const Quiz = () => {
                             ))}
                           </div>
                           {feedback && (
-                            <div className="pointer-events-none absolute right-4 top-14">
+                            <div className="pointer-events-none absolute bottom-5 right-4 sm:right-6">
                               <Stamp>{t(feedback.isCorrect ? (feedback.mastered ? 'Opanowane' : 'Dobrze') : 'Jeszcze raz')}</Stamp>
                             </div>
                           )}

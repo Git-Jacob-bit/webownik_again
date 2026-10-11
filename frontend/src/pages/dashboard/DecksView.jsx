@@ -96,7 +96,7 @@ const DecksView = ({ onCountsChange }) => {
         setFormError(t('Wybrany folder nie zawiera plików .txt.'));
         return;
       }
-      if (ignoredCount) setFileNotice(t('Pominięto {n} plików innych niż .txt.', { n: ignoredCount }));
+      if (ignoredCount) setFileNotice(t('Pominięto {n} {n|plik inny|pliki inne|plików innych} niż .txt.', { n: ignoredCount }));
     }
     const extensions = chosen.map(file => file.name.toLowerCase().split('.').pop());
     if (extensions.some(extension => !['txt', 'zip'].includes(extension))) {
@@ -202,7 +202,7 @@ const DecksView = ({ onCountsChange }) => {
                   <h3 className="min-w-0 break-words font-slab text-[23px] font-bold leading-tight">{localizedTitle(deck)}</h3>
                   <DeleteButton tone="paper" label={t('Usuń zestaw {name}', { name: localizedTitle(deck) })} onClick={() => deleteDeck(deck)} className="-mr-3 -mt-1" />
                 </div>
-                <span className="text-sm text-card-muted">{p ? t('{total} pytań, {m} opanowanych', { total: p.initial, m: p.mastered }) : t('Jeszcze nie zaczęty')}</span>
+                <span className="text-sm text-card-muted">{p ? t('{total} {total|pytanie|pytania|pytań}, opanowane: {m}', { total: p.initial, m: p.mastered }) : t('Jeszcze nie zaczęty')}</span>
                 <MasteryBar mastered={p?.mastered || 0} total={p?.initial || 1} />
                 <span className={`inline-flex min-h-[26px] items-center self-start rounded-full px-2.5 text-[13px] font-bold ${chipLook(deck)}`}>{translationLabel(deck, t)}</span>
                 <div className="mt-1 grid grid-cols-2 gap-2">

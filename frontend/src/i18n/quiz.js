@@ -87,7 +87,7 @@ const quiz = {
   'Dodaj pytanie': 'Add question',
   'Ucz się': 'Study',
   'Wersja angielska': 'English version',
-  'Gotowa, {done} z {total} pytań': 'Ready, {done} of {total} questions',
+  'Gotowa, {done} z {total} {total|pytania|pytań|pytań}': 'Ready, {done} of {total} {total|question|questions}',
   'Błąd tłumaczenia': 'Translation failed',
   'Tłumaczymy… {percent}%': 'Translating… {percent}%',
   'W kolejce do tłumaczenia': 'Queued for translation',
