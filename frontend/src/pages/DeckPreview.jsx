@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import AnimatedPage from '../components/AnimatedPage'; 
-import api from '../api'; // <--- UŻYWAMY NASZEGO PLIKU API
-import { motion, AnimatePresence } from 'framer-motion';
-import { toast } from 'react-toastify';
-import { 
-  ArrowLeft, Plus, Trash2, Save, X, 
-  CheckCircle2, Circle, Edit3, Loader2, Languages
-} from 'lucide-react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import api from '../api';
 import { useLanguage } from '../context/LanguageContext';
 import { useConfirm } from '../context/ConfirmDialogContext';
+import Button from '../components/ui/Button';
+import Alert from '../components/ui/Alert';
+import notify from '../components/ui/notify';
+import { NewQuestionCard, QuestionCard, QuestionEditor } from '../components/deck/QuestionCards';
+import { getErrorMessage } from '../utils/errors';
 
-// --- USUNIĘTO RĘCZNĄ KONFIGURACJĘ AXIOSA ---
-// Teraz api.js zajmuje się adresem URL i tokenami automatycznie.
+const sortDeck = deckData => {
+  const questions = [...(deckData.questions || [])].sort((a, b) => a.id - b.id);
+  questions.forEach(question => question.answers?.sort((a, b) => a.id - b.id));
+  return questions;
+};
 
 const DeckPreview = () => {
   const { id } = useParams();
@@ -23,307 +24,238 @@ const DeckPreview = () => {
   const [deck, setDeck] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [translationStarting, setTranslationStarting] = useState(false);
+  const [translationError, setTranslationError] = useState('');
 
-  // Stan edycji
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ content: '', answers: [] });
-  
-  // Stan dodawania
+  const [saving, setSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
   const [isAdding, setIsAdding] = useState(false);
   const [newQuestionContent, setNewQuestionContent] = useState('');
+  const [addError, setAddError] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, [id, language]);
-
-  useEffect(() => {
-    if (!['queued', 'processing'].includes(deck?.translation_status)) return undefined;
-    const timer = window.setInterval(fetchData, 1500);
-    return () => window.clearInterval(timer);
-  }, [deck?.translation_status, id, language]);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async ({ silent = false } = {}) => {
     try {
-      // Używamy api.get zamiast axios.get
       const res = await api.get(`/decks/${id}`);
-      
-      let deckData = res.data;
-      let questionsData = deckData.questions || [];
-
-      // SORTOWANIE (żeby nie skakało przy edycji)
-      questionsData.sort((a, b) => a.id - b.id);
-      questionsData.forEach(q => {
-        if (q.answers) q.answers.sort((a, b) => a.id - b.id);
-      });
-
-      setDeck(deckData);
-      setQuestions(questionsData);
-      return questionsData;
+      const sorted = sortDeck(res.data);
+      setDeck(res.data);
+      setQuestions(sorted);
+      setLoadError('');
+      return sorted;
     } catch (err) {
       console.error(err);
-      if (err.response && err.response.status === 405) {
-        toast.error("Błąd backendu: Brak endpointu GET /decks/" + id);
-      } else {
-        toast.error("Nie udało się pobrać zestawu.");
-      }
+      // Przy cichym odświeżaniu (postęp tłumaczenia) nie zasypujemy ekranu błędami.
+      if (!silent) setLoadError(getErrorMessage(err, 'Zestaw nie istnieje albo wystąpił problem z połączeniem.'));
+      return null;
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => { fetchData(); }, [fetchData, language]);
+
+  useEffect(() => {
+    if (!['queued', 'processing'].includes(deck?.translation_status)) return undefined;
+    const timer = window.setInterval(() => fetchData({ silent: true }), 1500);
+    return () => window.clearInterval(timer);
+  }, [deck?.translation_status, fetchData]);
 
   const startTranslation = async () => {
     setTranslationStarting(true);
+    setTranslationError('');
     try {
       await api.post(`/decks/${id}/translate`);
-      await fetchData();
+      await fetchData({ silent: true });
     } catch (err) {
-      toast.error(language === 'en' ? 'Could not start translation.' : 'Nie udało się uruchomić tłumaczenia.');
+      setTranslationError(getErrorMessage(err, 'Nie udało się uruchomić tłumaczenia.'));
     } finally {
       setTranslationStarting(false);
     }
   };
 
-  const startEdit = (question) => {
+  const startEdit = question => {
+    setEditError('');
     setEditingId(question.id);
-    setEditForm({
-      content: question.content,
-      answers: question.answers.map(a => ({ ...a }))
-    });
+    setEditForm({ content: question.content, answers: question.answers.map(answer => ({ ...answer })) });
   };
 
   const cancelEdit = () => {
     setEditingId(null);
+    setEditError('');
     setEditForm({ content: '', answers: [] });
   };
 
-  const handleEditChange = (field, value) => {
-    setEditForm(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleAnswerChange = (ansIndex, field, value) => {
-    setEditForm(prev => ({
-      ...prev,
-      answers: prev.answers.map((answer, idx) => idx === ansIndex ? { ...answer, [field]: value } : answer),
-    }));
+  const handleAnswerChange = (index, field, value) => {
+    setEditForm(prev => ({ ...prev, answers: prev.answers.map((answer, i) => i === index ? { ...answer, [field]: value } : answer) }));
   };
 
   const addAnswer = () => {
-    setEditForm(prev => ({
-      ...prev,
-      answers: [...prev.answers, { id: null, key: `new-${Date.now()}`, content: '', is_correct: false }],
-    }));
+    setEditForm(prev => ({ ...prev, answers: [...prev.answers, { id: null, key: `new-${Date.now()}`, content: '', is_correct: false }] }));
   };
 
-  const removeAnswer = (ansIndex) => {
-    setEditForm(prev => ({ ...prev, answers: prev.answers.filter((_, idx) => idx !== ansIndex) }));
+  const removeAnswer = index => {
+    setEditForm(prev => ({ ...prev, answers: prev.answers.filter((_, i) => i !== index) }));
   };
 
-  const saveQuestion = async (qId) => {
+  const saveQuestion = async questionId => {
+    setSaving(true);
+    setEditError('');
     try {
-      await api.put(`/decks/question/${qId}/full`, {
+      await api.put(`/decks/question/${questionId}/full`, {
         content: editForm.content,
-        answers: editForm.answers.map(({ id, content, is_correct }) => ({ id, content, is_correct })),
+        answers: editForm.answers.map(({ id: answerId, content, is_correct }) => ({ id: answerId, content, is_correct })),
       });
-      toast.success("Zapisano zmiany!");
+      notify.success(t('Zmiany zapisane.'));
       setEditingId(null);
-      fetchData();
+      fetchData({ silent: true });
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : "Błąd zapisu.");
+      setEditError(getErrorMessage(err, 'Nie udało się zapisać pytania.'));
+    } finally {
+      setSaving(false);
     }
   };
 
-  const deleteQuestion = async (qId) => {
+  const deleteQuestion = async questionId => {
     if (!await confirm({ title: 'Usunąć pytanie?', message: 'Pytanie wraz ze wszystkimi odpowiedziami zostanie trwale usunięte.' })) return;
     try {
-      await api.delete(`/decks/question/${qId}`);
-      setQuestions(prev => prev.filter(q => q.id !== qId));
-      toast.info("Pytanie usunięte.");
+      await api.delete(`/decks/question/${questionId}`);
+      setQuestions(prev => prev.filter(question => question.id !== questionId));
+      if (editingId === questionId) cancelEdit();
+      notify.success(t('Pytanie usunięte.'));
     } catch (err) {
-      toast.error("Błąd usuwania.");
+      notify.error(t(getErrorMessage(err, 'Nie udało się usunąć pytania.')));
     }
   };
 
-  const addNewQuestion = async (e) => {
-    e.preventDefault();
+  const addNewQuestion = async event => {
+    event.preventDefault();
     if (!newQuestionContent.trim()) return;
-
+    setSaving(true);
+    setAddError('');
     try {
       const res = await api.post(`/decks/${id}/question`, { content: newQuestionContent });
-      toast.success("Dodano pytanie! Uzupełnij teraz odpowiedzi.");
+      notify.success(t('Pytanie dodane. Uzupełnij odpowiedzi.'));
       setNewQuestionContent('');
       setIsAdding(false);
-      const created = (await fetchData())?.find(q => q.id === res.data.id);
+      const created = (await fetchData({ silent: true }))?.find(question => question.id === res.data.id);
       if (created) startEdit(created);
     } catch (err) {
-      toast.error("Błąd dodawania pytania.");
+      setAddError(getErrorMessage(err, 'Nie udało się dodać pytania.'));
+    } finally {
+      setSaving(false);
     }
   };
 
   if (loading) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">
-      <Loader2 className="animate-spin h-10 w-10 text-blue-500" />
+    <div className="desk flex min-h-[100dvh] items-center justify-center px-4" role="status">
+      <p className="font-slab text-2xl font-bold text-muted motion-safe:animate-pulse">{t('Wczytujemy fiszki…')}</p>
     </div>
   );
 
   if (!deck) return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-white">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900/80 p-8 text-center">
-        <h1 className="text-2xl font-bold">Nie udało się załadować zestawu</h1>
-        <p className="mt-2 text-sm text-slate-400">Zestaw nie istnieje albo wystąpił problem z połączeniem.</p>
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <button onClick={() => navigate('/decks')} className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-700 py-3 font-medium text-slate-300 hover:bg-slate-800"><ArrowLeft className="h-5 w-5" /> Wróć do zestawów</button>
-          <button onClick={() => { setLoading(true); fetchData(); }} className="flex-1 rounded-xl bg-blue-600 py-3 font-medium hover:bg-blue-500">Spróbuj ponownie</button>
+    <main className="desk flex min-h-[100dvh] items-center justify-center px-4 py-10 text-ink">
+      <div className="flex w-full max-w-lg flex-col gap-6">
+        <h1 className="font-slab text-4xl font-bold">{t('Nie udało się załadować zestawu')}</h1>
+        <Alert type="error">{t(loadError || 'Zestaw nie istnieje albo wystąpił problem z połączeniem.')}</Alert>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+          <Button onClick={() => { setLoading(true); fetchData(); }}>{t('Spróbuj ponownie')}</Button>
+          <Button variant="quiet" onClick={() => navigate('/decks')}>{t('Wróć do zestawów')}</Button>
         </div>
       </div>
-    </div>
+    </main>
   );
 
+  const status = deck.translation_status;
+  const percent = deck.translation_total ? Math.round((deck.translation_completed / deck.translation_total) * 100) : 0;
+  const translationLabel = status === 'ready'
+    ? t('Gotowa, {done} z {total} {total|pytania|pytań|pytań}', { done: deck.translation_completed || 0, total: deck.translation_total || 0 })
+    : status === 'failed' ? t('Błąd tłumaczenia')
+      : status === 'processing' ? t('Tłumaczymy… {percent}%', { percent })
+        : status === 'queued' ? t('W kolejce do tłumaczenia')
+          : t('Jeszcze nie przetłumaczona');
+  const barWidth = status === 'ready' ? 100 : status === 'processing' ? Math.max(2, percent) : status === 'queued' ? 4 : 0;
+
   return (
-    <AnimatedPage>
-      <div className="min-h-screen bg-slate-950 text-white font-sans p-8">
-        <div className="max-w-4xl mx-auto mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/decks')}
-              className="p-2 bg-slate-800 rounded-xl hover:bg-slate-700 transition-colors text-slate-400 hover:text-white"
-            >
-              <ArrowLeft className="h-6 w-6" />
-            </button>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                {deck ? localizedTitle(deck) : "Błąd ładowania"}
-              </h1>
-              <p className="text-slate-500 text-sm">Edycja pytań i odpowiedzi</p>
-            </div>
-          </div>
-          
-          <button 
-            onClick={() => setIsAdding(!isAdding)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-xl font-medium transition-colors shadow-lg shadow-blue-900/20"
-            disabled={!deck} 
-          >
-            {isAdding ? <X className="h-5 w-5"/> : <Plus className="h-5 w-5"/>}
-            {isAdding ? "Anuluj" : "Nowe pytanie"}
-          </button>
-        </div>
+    <div className="desk min-h-[100dvh] text-ink">
+      <main className="mx-auto flex max-w-[980px] flex-col gap-7 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
+        <button type="button" onClick={() => navigate('/decks')} className="link self-start text-[15px]">{t('Wróć do zestawów')}</button>
 
-        <div className="max-w-4xl mx-auto space-y-6 pb-20">
-          <div className="rounded-2xl border border-white/[0.07] bg-slate-900/80 p-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-300"><Languages className="h-5 w-5" /></span>
-              <div>
-                <p className="font-semibold">{deck.translation_status === 'ready' ? t('Tłumaczenie gotowe') : deck.translation_status === 'failed' ? t('Błąd tłumaczenia') : deck.translation_status === 'processing' ? `${t('Tłumaczenie...')} ${deck.translation_total ? Math.round((deck.translation_completed / deck.translation_total) * 100) : 0}%` : deck.translation_status === 'queued' ? t('W kolejce do tłumaczenia') : t('Nieprzetłumaczony')}</p>
-                <p className="text-sm text-slate-500">PL → EN · {deck.translation_completed || 0}/{deck.translation_total || 0}</p>
-              </div>
-              </div>
-              {!['ready', 'queued', 'processing'].includes(deck.translation_status) && <button onClick={startTranslation} disabled={translationStarting} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-60">{translationStarting && <Loader2 className="h-4 w-4 animate-spin" />}{t(deck.translation_status === 'failed' ? 'Ponów tłumaczenie' : 'Uruchom tłumaczenie')}</button>}
-            </div>
-            {['queued', 'processing'].includes(deck.translation_status) && <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800"><div className={`h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-[width] duration-500 ${deck.translation_status === 'queued' ? 'animate-pulse' : ''}`} style={{ width: `${deck.translation_status === 'queued' ? 4 : deck.translation_total ? Math.max(2, Math.round((deck.translation_completed / deck.translation_total) * 100)) : 2}%` }} /></div>}
+        <header className="flex flex-wrap items-end justify-between gap-5">
+          <div className="flex min-w-0 flex-col gap-2">
+            <h1 className="break-words font-slab text-[40px] font-bold leading-none sm:text-[56px]">{localizedTitle(deck)}</h1>
+            <p className="text-base text-muted">{t('Pytań: {n}. Kliknij „Edytuj”, żeby poprawić fiszkę.', { n: questions.length })}</p>
           </div>
-          <AnimatePresence>
-            {isAdding && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
-                className="bg-blue-500/10 border border-blue-500/30 p-6 rounded-2xl overflow-hidden"
-              >
-                <form onSubmit={addNewQuestion} className="flex gap-4">
-                  <input 
-                    type="text" 
-                    placeholder="Wpisz treść nowego pytania..." 
-                    value={newQuestionContent}
-                    onChange={e => setNewQuestionContent(e.target.value)}
-                    className="flex-1 bg-slate-900 border border-slate-700 text-white rounded-xl p-3 focus:border-blue-500 outline-none"
-                    autoFocus
-                  />
-                  <button type="submit" className="bg-blue-600 hover:bg-blue-500 px-6 rounded-xl font-bold">Dodaj</button>
-                </form>
-              </motion.div>
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+            <Button variant="quiet" onClick={() => { setAddError(''); setIsAdding(value => !value); }} aria-expanded={isAdding}>{t(isAdding ? 'Anuluj dodawanie' : 'Dodaj pytanie')}</Button>
+            <Button onClick={() => navigate(`/quiz/${deck.id}`)} disabled={!questions.length}>{t('Ucz się')}</Button>
+          </div>
+        </header>
+
+        <section className="flex flex-col gap-3 rounded-lg bg-panel px-5 py-4 ring-1 ring-inset ring-ink/15" aria-label={t('Wersja angielska')}>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+            <span className="font-bold">{t('Wersja angielska')}</span>
+            <span className="h-2 min-w-[140px] flex-1 overflow-hidden rounded-full bg-ink/10" aria-hidden="true">
+              <span className={`block h-full rounded-full bg-accent transition-[width] duration-500 ${status === 'queued' ? 'motion-safe:animate-pulse' : ''}`} style={{ width: `${barWidth}%` }} />
+            </span>
+            <span className="tabular-nums text-muted" role="status">{translationLabel}</span>
+            {!['ready', 'queued', 'processing'].includes(status) && (
+              <Button size="sm" variant="outline" onClick={startTranslation} loading={translationStarting}>
+                {t(status === 'failed' ? 'Ponów tłumaczenie' : 'Uruchom tłumaczenie')}
+              </Button>
             )}
-          </AnimatePresence>
+          </div>
+          {translationError && <Alert type="error">{t(translationError)}</Alert>}
+        </section>
 
-          {questions.map((q, index) => (
-            <motion.div 
-              key={q.id} layout
-              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              className={`bg-slate-800/40 border p-6 rounded-2xl transition-all ${editingId === q.id ? 'border-blue-500/50 ring-1 ring-blue-500/20' : 'border-slate-700'}`}
-            >
-              {editingId === q.id ? (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-blue-400 text-sm font-bold uppercase tracking-wider">Edycja pytania #{index + 1}</span>
-                  </div>
-                  <input 
-                    type="text" value={editForm.content} onChange={e => handleEditChange('content', e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-600 text-white rounded-xl p-3 focus:border-blue-500 outline-none font-medium text-lg"
-                  />
-                  <div className="space-y-2 mt-4">
-                    <p className="text-slate-500 text-xs uppercase font-bold">Odpowiedzi</p>
-                    {editForm.answers.map((ans, idx) => (
-                      <div key={ans.id ?? ans.key} className="flex items-center gap-3">
-                        <button 
-                          onClick={() => handleAnswerChange(idx, 'is_correct', !ans.is_correct)}
-                          className={`p-2 rounded-lg transition-colors ${ans.is_correct ? 'text-green-400 bg-green-400/10' : 'text-slate-600 hover:text-slate-400'}`}
-                        >
-                          {ans.is_correct ? <CheckCircle2 className="h-6 w-6" /> : <Circle className="h-6 w-6" />}
-                        </button>
-                        <input 
-                          type="text" value={ans.content} onChange={e => handleAnswerChange(idx, 'content', e.target.value)}
-                          className={`flex-1 bg-slate-900 border text-white rounded-lg p-2 focus:border-blue-500 outline-none ${ans.is_correct ? 'border-green-500/30' : 'border-slate-700'}`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeAnswer(idx)}
-                          disabled={editForm.answers.length <= 1}
-                          aria-label="Usuń odpowiedź"
-                          className="p-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
-                        >
-                          <X className="h-5 w-5" />
-                        </button>
-                      </div>
-                    ))}
-                    {editForm.answers.length < 20 && (
-                      <button type="button" onClick={addAnswer} className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 px-2 py-1">
-                        <Plus className="h-4 w-4" /> Dodaj odpowiedź
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex gap-3 mt-6 pt-4 border-t border-slate-700/50">
-                    <button onClick={() => saveQuestion(q.id)} className="flex items-center gap-2 bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-medium text-white transition-colors"><Save className="h-4 w-4" /> Zapisz</button>
-                    <button onClick={cancelEdit} className="px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800 transition-colors">Anuluj</button>
-                    <button onClick={() => deleteQuestion(q.id)} className="ml-auto flex items-center gap-2 text-red-400 hover:bg-red-500/10 px-3 py-2 rounded-lg transition-colors"><Trash2 className="h-4 w-4" /> Usuń</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="text-xl font-medium text-white pr-4"><span className="text-slate-500 mr-2">#{index + 1}</span>{localized(q)}</h3>
-                    <button onClick={() => startEdit(q)} className="text-slate-500 hover:text-blue-400 p-2 hover:bg-blue-500/10 rounded-lg transition-all"><Edit3 className="h-5 w-5" /></button>
-                  </div>
-                  <div className="space-y-2 pl-4 border-l-2 border-slate-700">
-                    {q.answers.map(ans => (
-                      <div key={ans.id} className={`flex items-center gap-3 p-2 rounded-lg ${ans.is_correct ? 'bg-green-500/10 text-green-300' : 'text-slate-400'}`}>
-                        {ans.is_correct ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <Circle className="h-4 w-4 shrink-0 opacity-50" />}
-                        <span>{localized(ans)}</span>
-                      </div>
-                    ))}
-                    {q.answers.length === 0 && <span className="text-slate-600 text-sm italic">Brak odpowiedzi</span>}
-                  </div>
-                </div>
-              )}
-            </motion.div>
+        <div className="flex flex-col gap-6">
+          {isAdding && (
+            <div className="flex flex-col gap-3">
+              <NewQuestionCard
+                value={newQuestionContent}
+                onChange={setNewQuestionContent}
+                onSubmit={addNewQuestion}
+                onCancel={() => setIsAdding(false)}
+                saving={saving}
+              />
+              {addError && <Alert type="error">{t(addError)}</Alert>}
+            </div>
+          )}
+
+          {questions.map((question, index) => (
+            editingId === question.id ? (
+              <div key={question.id} className="flex flex-col gap-3">
+                <QuestionEditor
+                  number={index + 1}
+                  form={editForm}
+                  saving={saving}
+                  onContent={value => setEditForm(prev => ({ ...prev, content: value }))}
+                  onAnswer={handleAnswerChange}
+                  onAddAnswer={addAnswer}
+                  onRemoveAnswer={removeAnswer}
+                  onSave={() => saveQuestion(question.id)}
+                  onCancel={cancelEdit}
+                  onDelete={() => deleteQuestion(question.id)}
+                />
+                {editError && <Alert type="error">{t(editError)}</Alert>}
+              </div>
+            ) : (
+              <QuestionCard key={question.id} question={question} number={index + 1} localized={localized} onEdit={() => startEdit(question)} />
+            )
           ))}
+
           {questions.length === 0 && !isAdding && (
-            <div className="text-center py-12 text-slate-500">
-              <p>{deck ? "Ten zestaw jest pusty." : "Nie udało się załadować danych."}</p>
-              {deck && <button onClick={() => setIsAdding(true)} className="text-blue-400 hover:underline mt-2">Dodaj pierwsze pytanie</button>}
+            <div className="flex flex-col items-start gap-4 rounded-lg border-2 border-dashed border-ink/20 px-6 py-10">
+              <p className="font-slab text-2xl font-bold">{t('Ten zestaw jest pusty.')}</p>
+              <p className="text-muted">{t('Dodaj pierwsze pytanie, a potem uzupełnij odpowiedzi.')}</p>
+              <Button onClick={() => setIsAdding(true)}>{t('Dodaj pierwsze pytanie')}</Button>
             </div>
           )}
         </div>
-      </div>
-    </AnimatedPage>
+      </main>
+    </div>
   );
 };
 

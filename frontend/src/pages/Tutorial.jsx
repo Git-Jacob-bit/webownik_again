@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import {
-  ArrowLeft, ArrowRight, BookOpenCheck, BrainCircuit, CalendarDays, Check,
-  CheckSquare, Circle, Languages, Layers3, Link as LinkIcon, ListChecks,
-  Moon, Play, RotateCcw, Settings, StickyNote, Sun, X,
-} from 'lucide-react';
+import { Languages, Moon, Sun } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../context/ThemeContext';
+import Button from '../components/ui/Button';
+import Logo from '../components/ui/Logo';
+import { Fiszka, FiszkaStack } from '../components/ui/Fiszka';
+import { PenCheck, PenCircle, PenStrike, Stamp } from '../components/ui/PenMarks';
 
 const demo = {
   deck: { pl: 'Podstawy biologii', en: 'Biology basics' },
@@ -23,15 +23,17 @@ const demo = {
 };
 
 const stepData = [
-  { id: 'today', icon: CalendarDays, title: ['Pulpit dnia', 'Today dashboard'], text: ['Tutaj szybko sprawdzisz postęp, najbliższe zadania i ostatnie notatki.', 'Check your progress, upcoming tasks, and recent notes at a glance.'] },
-  { id: 'decks', icon: Layers3, title: ['Zestawy pytań', 'Question decks'], text: ['Wgraj pliki, śledź tłumaczenie i rozpocznij naukę wybranego zestawu.', 'Upload files, track translation, and start studying a selected deck.'] },
-  { id: 'preview', icon: BookOpenCheck, title: ['Podgląd zestawu', 'Deck preview'], text: ['Edytuj pytania i odpowiedzi albo ręcznie uruchom tłumaczenie PL → EN.', 'Edit questions and answers or manually start PL → EN translation.'] },
-  { id: 'quiz', icon: Play, title: ['Tryb nauki', 'Study mode'], text: ['Zaznacz odpowiedź i sprawdź wynik. Demo nie zapisuje postępu.', 'Select an answer and check it. The demo does not save progress.'] },
-  { id: 'tasks', icon: CheckSquare, title: ['Zadania', 'Tasks'], text: ['Dodawaj codzienne zadania i oznaczaj wykonane.', 'Add daily tasks and mark them as completed.'] },
-  { id: 'notes', icon: StickyNote, title: ['Notatki', 'Notes'], text: ['Zapisuj krótkie informacje i wracaj do nich z pulpitu.', 'Save short notes and return to them from the dashboard.'] },
-  { id: 'links', icon: LinkIcon, title: ['Przydatne linki', 'Useful links'], text: ['Przechowuj materiały zewnętrzne w jednym miejscu.', 'Keep external learning resources in one place.'] },
-  { id: 'settings', icon: Settings, title: ['Personalizacja', 'Personalization'], text: ['W ustawieniach zmienisz język, motyw, hasło oraz dane konta.', 'Change language, theme, password, and account options in settings.'] },
+  { id: 'today', title: ['Pulpit dnia', 'Today dashboard'], text: ['Tutaj szybko sprawdzisz postęp, najbliższe zadania i ostatnie notatki.', 'Check your progress, upcoming tasks, and recent notes at a glance.'] },
+  { id: 'decks', title: ['Zestawy pytań', 'Question decks'], text: ['Wgraj pliki, śledź tłumaczenie i rozpocznij naukę wybranego zestawu.', 'Upload files, track translation, and start studying a selected deck.'] },
+  { id: 'preview', title: ['Podgląd zestawu', 'Deck preview'], text: ['Edytuj pytania i odpowiedzi albo ręcznie uruchom tłumaczenie PL → EN.', 'Edit questions and answers or manually start PL → EN translation.'] },
+  { id: 'quiz', title: ['Tryb nauki', 'Study mode'], text: ['Postaw X przy odpowiedzi i sprawdź wynik. Demo nie zapisuje postępu.', 'Mark an answer with X and check it. The demo does not save progress.'] },
+  { id: 'tasks', title: ['Zadania', 'Tasks'], text: ['Dodawaj codzienne zadania i oznaczaj wykonane.', 'Add daily tasks and mark them as completed.'] },
+  { id: 'notes', title: ['Notatki', 'Notes'], text: ['Zapisuj krótkie informacje i wracaj do nich z pulpitu.', 'Save short notes and return to them from the dashboard.'] },
+  { id: 'links', title: ['Przydatne linki', 'Useful links'], text: ['Przechowuj materiały zewnętrzne w jednym miejscu.', 'Keep external learning resources in one place.'] },
+  { id: 'settings', title: ['Personalizacja', 'Personalization'], text: ['W ustawieniach zmienisz język, motyw, hasło oraz dane konta.', 'Change language, theme, password, and account options in settings.'] },
 ];
+
+const LETTERS = ['A', 'B', 'C', 'D'];
 
 const Tutorial = () => {
   const navigate = useNavigate();
@@ -44,30 +46,181 @@ const Tutorial = () => {
   const current = stepData[step];
   const pick = value => Array.isArray(value) ? value[language === 'en' ? 1 : 0] : value[language];
   const progress = ((step + 1) / stepData.length) * 100;
-  const nav = useMemo(() => [stepData[0], stepData[1], stepData[4], stepData[5], stepData[6]], []);
+  const nav = useMemo(() => [stepData[0], stepData[1], stepData[3], stepData[4], stepData[5], stepData[6], stepData[7]], []);
   const goTo = id => setStep(stepData.findIndex(item => item.id === id));
+  const right = checked && demo.answers[answer]?.correct;
 
   const panel = () => {
-    if (current.id === 'today') return <div className="grid gap-4 sm:grid-cols-3"><DemoStat value="1" label={pick(['Zestaw', 'Deck'])} /><DemoStat value={taskDone ? '0' : '1'} label={pick(['Do zrobienia', 'To do'])} /><DemoStat value="1" label={pick(['Notatka', 'Note'])} /><DemoCard className="sm:col-span-3"><p className="text-sm text-slate-500">{pick(['Najbliższe zadanie', 'Upcoming task'])}</p><p className="mt-2 font-semibold">{pick(demo.task)}</p></DemoCard></div>;
-    if (current.id === 'decks') return <DemoCard><div className="flex items-start justify-between gap-4"><div><span className="rounded-full bg-green-500/10 px-2.5 py-1 text-xs text-green-400">{pick(['Tłumaczenie gotowe', 'Translation ready'])}</span><h3 className="mt-4 text-xl font-bold">{pick(demo.deck)}</h3><p className="mt-1 text-sm text-slate-500">5 {pick(['pytań', 'questions'])}</p></div><button onClick={() => goTo('preview')} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">{pick(['Podgląd', 'Preview'])}</button></div></DemoCard>;
-    if (current.id === 'preview') return <DemoCard><p className="text-xs font-semibold uppercase tracking-widest text-blue-400">PL → EN</p><h3 className="mt-3 text-xl font-bold">{pick(demo.question)}</h3><div className="mt-4 grid gap-2 sm:grid-cols-2">{demo.answers.map((item, index) => <div key={index} className={`rounded-xl border p-3 text-sm ${item.correct ? 'border-green-500/30 bg-green-500/10' : 'border-white/10 bg-white/[0.03]'}`}>{pick(item)}</div>)}</div><button onClick={() => goTo('quiz')} className="mt-5 flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white"><Play className="h-4 w-4" />{pick(['Rozpocznij demo quizu', 'Start demo quiz'])}</button></DemoCard>;
-    if (current.id === 'quiz') return <DemoCard><h3 className="text-xl font-bold">{pick(demo.question)}</h3><div className="mt-5 space-y-2">{demo.answers.map((item, index) => { const selected = answer === index; const correct = checked && item.correct; const wrong = checked && selected && !item.correct; return <button key={index} disabled={checked} onClick={() => setAnswer(index)} className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${correct ? 'border-green-500 bg-green-500/10' : wrong ? 'border-red-500 bg-red-500/10' : selected ? 'border-blue-500 bg-blue-500/10' : 'border-white/10 hover:border-blue-500/40'}`}><span className="flex h-6 w-6 items-center justify-center">{correct ? <Check className="text-green-400" /> : <Circle className="h-5 w-5 text-slate-500" />}</span>{pick(item)}</button>; })}</div>{checked ? <button onClick={() => { setChecked(false); setAnswer(null); }} className="mt-5 flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2.5"><RotateCcw className="h-4 w-4" />{pick(['Spróbuj ponownie', 'Try again'])}</button> : <button disabled={answer === null} onClick={() => setChecked(true)} className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white disabled:opacity-40">{pick(['Sprawdź', 'Check'])}</button>}</DemoCard>;
-    if (current.id === 'tasks') return <DemoCard><button onClick={() => setTaskDone(value => !value)} className="flex w-full items-center gap-3 text-left"><span className={`flex h-7 w-7 items-center justify-center rounded-lg border ${taskDone ? 'border-green-500 bg-green-500 text-white' : 'border-slate-600'}`}>{taskDone && <Check className="h-4 w-4" />}</span><span className={taskDone ? 'text-slate-500 line-through' : ''}>{pick(demo.task)}</span></button></DemoCard>;
-    if (current.id === 'notes') return <DemoCard><StickyNote className="h-7 w-7 text-violet-400" /><h3 className="mt-4 text-lg font-bold">{pick(demo.noteTitle)}</h3><p className="mt-2 leading-7 text-slate-400">{pick(demo.note)}</p></DemoCard>;
-    if (current.id === 'links') return <DemoCard><LinkIcon className="h-7 w-7 text-cyan-400" /><h3 className="mt-4 text-lg font-bold">{pick(demo.link)}</h3><p className="mt-1 text-sm text-slate-500">https://example.com/anatomy</p></DemoCard>;
-    return <div className="grid gap-4 sm:grid-cols-2"><button onClick={toggleLanguage} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left"><Languages className="h-6 w-6 text-cyan-400" /><p className="mt-4 font-bold">{pick(['Język', 'Language'])}</p><p className="mt-1 text-sm text-slate-500">{language === 'pl' ? 'Polski → English' : 'English → Polski'}</p></button><button onClick={toggleTheme} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left">{isDark ? <Sun className="h-6 w-6 text-amber-400" /> : <Moon className="h-6 w-6 text-blue-500" />}<p className="mt-4 font-bold">{pick(['Motyw', 'Theme'])}</p><p className="mt-1 text-sm text-slate-500">{pick(isDark ? ['Włącz jasny', 'Enable light'] : ['Włącz ciemny', 'Enable dark'])}</p></button></div>;
+    if (current.id === 'today') return (
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[['1', ['Zestaw', 'Deck']], [taskDone ? '0' : '1', ['Do zrobienia', 'To do']], ['1', ['Notatka', 'Note']]].map(([value, label]) => (
+          <div key={label[0]} className="rounded-xl bg-raise p-5 ring-1 ring-inset ring-ink/10">
+            <p className="font-slab text-4xl font-bold">{value}</p>
+            <p className="mt-1 text-muted">{pick(label)}</p>
+          </div>
+        ))}
+        <div className="flex items-center gap-4 rounded-xl bg-raise p-5 ring-1 ring-inset ring-ink/10 sm:col-span-3">
+          <span className="xbox" aria-pressed={taskDone} />
+          <div><p className="text-sm text-muted">{pick(['Najbliższe zadanie', 'Upcoming task'])}</p><p className="mt-1 font-semibold">{pick(demo.task)}</p></div>
+        </div>
+      </div>
+    );
+    if (current.id === 'decks') return (
+      <FiszkaStack className="max-w-md">
+        <Fiszka label={pick(['5 pytań', '5 questions'])} aside={<span className="rounded-full bg-[#4E7A42]/15 px-2.5 py-0.5 text-xs font-bold text-[#2F5A26]">{pick(['Tłumaczenie gotowe', 'Translation ready'])}</span>}>
+          <h3 className="mt-3 font-slab text-2xl font-bold">{pick(demo.deck)}</h3>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => goTo('preview')} className="min-h-[44px] rounded-md font-bold text-card-ink ring-[1.5px] ring-inset ring-card-ink/25">{pick(['Podgląd', 'Preview'])}</button>
+            <button type="button" onClick={() => goTo('quiz')} className="min-h-[44px] rounded-md bg-card-ink font-bold text-card">{pick(['Ucz się', 'Study'])}</button>
+          </div>
+        </Fiszka>
+      </FiszkaStack>
+    );
+    if (current.id === 'preview') return (
+      <Fiszka className="max-w-2xl" label={pick(['Pytanie 1', 'Question 1'])} aside={<span className="text-xs font-bold text-pen">PL → EN</span>}>
+        <p className="mt-3 font-slab text-[22px] font-semibold leading-[34px]">{pick(demo.question)}</p>
+        <div className="mt-2 grid gap-x-6 sm:grid-cols-2">
+          {demo.answers.map((item, index) => (
+            <div key={index} className="flex min-h-[44px] items-center gap-3 text-[17px]">
+              {item.correct ? <PenCheck className="-mr-1 h-6 w-6 flex-none" label={pick(['Poprawna', 'Correct'])} /> : <span className="-mr-1 w-6 flex-none" />}
+              <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[4px] border-2 border-[#4A3A2E] bg-[#FBF6EE] text-sm font-bold text-[#4A3A2E]">{LETTERS[index]}</span>
+              {pick(item)}
+            </div>
+          ))}
+        </div>
+        <Button className="mt-5" onClick={() => goTo('quiz')}>{pick(['Rozpocznij demo quizu', 'Start demo quiz'])}</Button>
+      </Fiszka>
+    );
+    if (current.id === 'quiz') return (
+      <div className="flex max-w-xl flex-col gap-5">
+        <Fiszka label={pick(['Pytanie 1 z 1', 'Question 1 of 1'])} aside={<span>{pick(demo.deck)}</span>} rule={56} className="relative">
+          <p className="mb-3 mt-3 font-slab text-[23px] font-semibold leading-[32px]">{pick(demo.question)}</p>
+          <div className="flex flex-col">
+            {demo.answers.map((item, index) => {
+              const picked = answer === index;
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  disabled={checked}
+                  onClick={() => setAnswer(picked ? null : index)}
+                  aria-pressed={picked}
+                  className="relative flex min-h-[56px] items-center gap-4 text-left text-lg font-semibold text-card-ink"
+                >
+                  <span className="relative flex h-8 w-8 flex-none items-center justify-center rounded-[4px] border-2 border-[#4A3A2E] bg-[#FBF6EE] text-[15px] font-bold text-[#4A3A2E]">
+                    {LETTERS[index]}
+                    {picked && <svg viewBox="0 0 40 40" aria-hidden="true" className="absolute -inset-1"><path d="M8 9 L32 31" stroke="rgb(var(--c-card-ink))" strokeWidth="3.6" strokeLinecap="round" /><path d="M31 8 L9 32" stroke="rgb(var(--c-card-ink))" strokeWidth="3.6" strokeLinecap="round" /></svg>}
+                  </span>
+                  <span className="relative">
+                    {pick(item)}
+                    {checked && picked && !item.correct && <PenStrike className="-left-1 -right-1" />}
+                  </span>
+                  {checked && item.correct && picked && <PenCheck className="ml-auto h-7 w-7" label={pick(['Dobrze', 'Correct'])} />}
+                  {checked && item.correct && !picked && <PenCircle className="-left-4 top-1.5 h-11 w-16" />}
+                </button>
+              );
+            })}
+          </div>
+          {checked && <span className="absolute right-4 top-14"><Stamp>{right ? pick(['Opanowane', 'Mastered']) : pick(['Jeszcze raz', 'Again'])}</Stamp></span>}
+        </Fiszka>
+        <div className="flex flex-wrap items-center gap-4">
+          {checked
+            ? <Button variant="outline" onClick={() => { setChecked(false); setAnswer(null); }}>{pick(['Spróbuj ponownie', 'Try again'])}</Button>
+            : <Button disabled={answer === null} onClick={() => setChecked(true)}>{pick(['Sprawdź', 'Check'])}</Button>}
+          <p className="text-muted">{checked ? (right ? pick(['Tak trzymaj – dwie dobre odpowiedzi z rzędu i fiszka odpada.', 'Keep going – two right answers in a row and the card is done.']) : pick(['Fiszka wraca na stos i pojawi się jeszcze raz.', 'The card goes back on the stack and will come again.'])) : pick(['Postaw X przy poprawnej odpowiedzi.', 'Put an X next to the correct answer.'])}</p>
+        </div>
+      </div>
+    );
+    if (current.id === 'tasks') return (
+      <Fiszka className="max-w-xl" label={pick(['Do zrobienia', 'To do'])} rule={56}>
+        <label className="flex min-h-[56px] cursor-pointer items-center gap-4 text-[17px]">
+          <input type="checkbox" className="xbox" checked={taskDone} onChange={() => setTaskDone(value => !value)} />
+          <span className={taskDone ? 'text-card-muted line-through decoration-pen decoration-2' : ''}>{pick(demo.task)}</span>
+        </label>
+      </Fiszka>
+    );
+    if (current.id === 'notes') return (
+      <Fiszka className="max-w-md -rotate-[0.6deg]" label={pick(['Wczoraj', 'Yesterday'])} rule={30}>
+        <h3 className="mt-2 font-slab text-xl font-bold leading-[30px]">{pick(demo.noteTitle)}</h3>
+        <p className="leading-[30px] text-card-muted">{pick(demo.note)}</p>
+      </Fiszka>
+    );
+    if (current.id === 'links') return (
+      <div className="flex max-w-xl items-center gap-4 border-y border-ink/15 py-4">
+        <span aria-hidden="true" className="flex h-[52px] w-[52px] flex-none items-center justify-center rounded-[4px] bg-card font-slab text-2xl font-bold text-card-ink" style={{ boxShadow: 'inset 0 4px 0 rgb(var(--c-card)), inset 0 6px 0 rgb(var(--c-pen)), 0 0 0 1px var(--card-edge)' }}>E</span>
+        <div className="min-w-0"><p className="text-[17px] font-bold">{pick(demo.link)}</p><p className="truncate text-sm text-muted">example.com/anatomy</p></div>
+      </div>
+    );
+    return (
+      <div className="grid max-w-xl gap-4 sm:grid-cols-2">
+        <button type="button" onClick={toggleLanguage} className="flex flex-col items-start gap-3 rounded-xl p-5 text-left ring-[1.5px] ring-inset ring-ink/15 hover:ring-ink/30">
+          <Languages className="h-6 w-6 text-accent-text" aria-hidden="true" />
+          <span className="text-lg font-bold">{pick(['Język', 'Language'])}</span>
+          <span className="text-muted">{language === 'pl' ? 'Polski → English' : 'English → Polski'}</span>
+        </button>
+        <button type="button" onClick={toggleTheme} className="flex flex-col items-start gap-3 rounded-xl p-5 text-left ring-[1.5px] ring-inset ring-ink/15 hover:ring-ink/30">
+          {isDark ? <Sun className="h-6 w-6 text-warn" aria-hidden="true" /> : <Moon className="h-6 w-6 text-accent-text" aria-hidden="true" />}
+          <span className="text-lg font-bold">{pick(['Motyw', 'Theme'])}</span>
+          <span className="text-muted">{pick(isDark ? ['Włącz jasny', 'Enable light'] : ['Włącz ciemny', 'Enable dark'])}</span>
+        </button>
+      </div>
+    );
   };
 
-  return <div className="min-h-screen bg-slate-950 text-white lg:flex">
-    <aside className="hidden w-64 shrink-0 border-r border-white/10 bg-slate-900/80 p-4 lg:block"><div className="flex items-center gap-3 px-2 py-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 text-white"><BrainCircuit /></span><div><p className="font-bold">Webownik</p><p className="text-xs text-blue-400">DEMO</p></div></div><nav className="mt-6 space-y-1.5">{nav.map(item => <button key={item.id} onClick={() => goTo(item.id)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left ${current.id === item.id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-white/5'}`}><item.icon className="h-5 w-5" />{pick(item.title)}</button>)}</nav></aside>
-    <main className="min-w-0 flex-1"><header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/10 bg-slate-950/90 px-4 py-4 backdrop-blur-xl sm:px-8"><div><p className="text-xs font-semibold uppercase tracking-widest text-blue-400">{pick(['Interaktywny tutorial', 'Interactive tutorial'])}</p><h1 className="text-xl font-bold">{pick(current.title)}</h1></div><button onClick={() => navigate('/today')} className="flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm text-slate-400 hover:text-white"><X className="h-4 w-4" />{pick(['Wyjdź', 'Exit'])}</button></header>
-      <div className="mx-auto max-w-5xl p-4 pb-40 sm:p-8"><div className="mb-5 flex gap-2 overflow-x-auto lg:hidden">{stepData.map((item, index) => <button key={item.id} onClick={() => setStep(index)} className={`h-2.5 min-w-8 rounded-full ${index === step ? 'bg-blue-500' : 'bg-slate-700'}`} aria-label={pick(item.title)} />)}</div><AnimatePresence mode="wait"><motion.section key={current.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}><div className="mb-6"><p className="text-sm text-slate-500">{step + 1} / {stepData.length}</p><h2 className="mt-1 text-3xl font-bold">{pick(current.title)}</h2><p className="mt-2 max-w-2xl text-slate-400">{pick(current.text)}</p></div>{panel()}</motion.section></AnimatePresence></div>
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-slate-900/95 p-4 backdrop-blur-xl lg:left-64"><div className="mx-auto max-w-5xl"><div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-700"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-500 transition-all" style={{ width: `${progress}%` }} /></div><div className="flex justify-between"><button disabled={step === 0} onClick={() => setStep(value => value - 1)} className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-400 disabled:opacity-30"><ArrowLeft className="h-4 w-4" />{pick(['Wstecz', 'Back'])}</button>{step === stepData.length - 1 ? <button onClick={() => navigate('/today')} className="flex items-center gap-2 rounded-xl bg-green-600 px-5 py-2.5 font-semibold text-white"><Check className="h-4 w-4" />{pick(['Zakończ tutorial', 'Finish tutorial'])}</button> : <button onClick={() => setStep(value => value + 1)} className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white">{pick(['Dalej', 'Next'])}<ArrowRight className="h-4 w-4" /></button>}</div></div></div>
-    </main>
-  </div>;
-};
+  return (
+    <div className="desk relative min-h-[100dvh] text-ink">
+      <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-ink/10 bg-desk/90 px-4 py-3 backdrop-blur sm:px-8">
+        <div className="flex items-center gap-3">
+          <Logo size="md" />
+          <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-xs font-bold text-accent-text">{pick(['Demo', 'Demo'])}</span>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => navigate('/today')}>{pick(['Wyjdź z tutorialu', 'Exit tutorial'])}</Button>
+      </header>
 
-const DemoCard = ({ children, className = '' }) => <div className={`rounded-2xl border border-white/10 bg-slate-900/70 p-5 shadow-xl ${className}`}>{children}</div>;
-const DemoStat = ({ value, label }) => <DemoCard><p className="text-3xl font-bold">{value}</p><p className="mt-1 text-sm text-slate-500">{label}</p></DemoCard>;
+      <div className="relative mx-auto flex max-w-6xl gap-10 px-4 pb-44 pt-8 sm:px-8 lg:pb-36">
+        <nav aria-label={pick(['Kroki tutorialu', 'Tutorial steps'])} className="hidden w-56 flex-none flex-col gap-1 lg:flex">
+          {nav.map(item => {
+            const active = current.id === item.id || (item.id === 'decks' && current.id === 'preview');
+            return (
+              <button key={item.id} type="button" onClick={() => goTo(item.id)} aria-current={active ? 'step' : undefined} className={`min-h-[44px] rounded-md px-3 text-left font-semibold transition ${active ? 'bg-panel text-ink shadow-[inset_3px_0_0_rgb(var(--c-accent))]' : 'text-muted hover:bg-ink/5 hover:text-ink'}`}>
+                {pick(item.title)}
+              </button>
+            );
+          })}
+        </nav>
+
+        <main className="min-w-0 flex-1">
+          <AnimatePresence mode="wait">
+            <motion.section key={current.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+              <p className="text-sm font-semibold text-muted">{pick(['Krok', 'Step'])} {step + 1} / {stepData.length}</p>
+              <h1 className="mt-1 font-slab text-[38px] font-bold leading-tight sm:text-5xl">{pick(current.title)}</h1>
+              <p className="mb-8 mt-3 max-w-2xl text-[17px] leading-relaxed text-muted">{pick(current.text)}</p>
+              {panel()}
+            </motion.section>
+          </AnimatePresence>
+        </main>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-ink/10 bg-panel/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-3 flex gap-1" role="progressbar" aria-valuemin={1} aria-valuemax={stepData.length} aria-valuenow={step + 1} aria-label={pick(['Postęp tutorialu', 'Tutorial progress'])}>
+            {stepData.map((item, index) => (
+              <button key={item.id} type="button" onClick={() => setStep(index)} aria-label={pick(item.title)} className="flex h-6 flex-1 items-center">
+                <span className={`h-2 w-full rounded-sm ${index <= step ? 'bg-accent' : 'bg-ink/15'}`} style={{ opacity: index < step ? 0.55 : 1 }} />
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <Button variant="quiet" size="sm" disabled={step === 0} onClick={() => setStep(value => value - 1)}>{pick(['Wstecz', 'Back'])}</Button>
+            <span className="sr-only" aria-live="polite">{Math.round(progress)}%</span>
+            {step === stepData.length - 1
+              ? <Button onClick={() => navigate('/today')}>{pick(['Zakończ tutorial', 'Finish tutorial'])}</Button>
+              : <Button onClick={() => setStep(value => value + 1)}>{pick(['Dalej', 'Next'])}</Button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default Tutorial;

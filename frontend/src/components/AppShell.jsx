@@ -1,174 +1,149 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import {
-  BrainCircuit, CalendarDays, CheckSquare, ChevronLeft, ChevronRight,
-  Languages, Layers3, Link as LinkIcon, LogOut, Menu, Moon, Plus, Settings,
-  StickyNote, Sun, X, GraduationCap, MessageSquareText,
-} from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ChevronDown, Plus } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import HelpCenter from './HelpCenter';
-
+import Logo from './ui/Logo';
+import Modal from './ui/Modal';
+import { CREATE_EVENT } from '../pages/dashboard/shared';
 
 export const sections = [
-  { id: 'today', label: 'Dzisiaj', icon: CalendarDays, color: 'blue' },
-  { id: 'decks', label: 'Zestawy', icon: Layers3, color: 'blue' },
-  { id: 'tasks', label: 'Zadania', icon: CheckSquare, color: 'green' },
-  { id: 'notes', label: 'Notatki', icon: StickyNote, color: 'violet' },
-  { id: 'links', label: 'Linki', icon: LinkIcon, color: 'cyan' },
+  { id: 'today', label: 'Dzisiaj' },
+  { id: 'decks', label: 'Zestawy' },
+  { id: 'tasks', label: 'Zadania' },
+  { id: 'notes', label: 'Notatki' },
+  { id: 'links', label: 'Linki' },
 ];
 
-const primaryMobile = ['today', 'decks', 'notes'];
-const createTargets = {
-  decks: 'create-deck', tasks: 'create-task', notes: 'create-note', links: 'create-link',
-};
+const mobileTabs = ['today', 'decks', 'notes'];
+const creatable = ['decks', 'tasks', 'notes', 'links'];
 
-const focusCreateForm = activeSection => {
-  const target = document.getElementById(createTargets[activeSection]);
-  if (!target) return;
-  const toggle = target.querySelector('[data-create-toggle]');
-  if (toggle?.getAttribute('aria-expanded') === 'false') toggle.click();
-  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  window.setTimeout(() => target.querySelector('[data-autofocus]')?.focus(), 350);
-};
+const sheetItem = 'flex min-h-[52px] w-full items-center justify-between rounded-md px-4 text-left text-base font-bold ring-[1.5px] ring-inset ring-ink/15 transition hover:bg-ink/5';
 
-const AppShell = ({ activeSection, userInitial, onLogout, children }) => {
+const AppShell = ({ activeSection, counts = {}, userEmail = '', onLogout, children }) => {
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
   const { language, toggleLanguage, t } = useLanguage();
-  const [collapsed, setCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const accountMenuRef = useRef(null);
-  const accountTriggerRef = useRef(null);
-  const current = sections.find(item => item.id === activeSection) || sections[0];
-  const hasCreateAction = Boolean(createTargets[activeSection]);
+  const accountRef = useRef(null);
+
+  const closeMore = useCallback(() => setMoreOpen(false), []);
+  const closeCreate = useCallback(() => setCreateOpen(false), []);
+  const closeHelp = useCallback(() => setHelpOpen(false), []);
 
   useEffect(() => {
     if (!accountOpen) return undefined;
-
-    const closeOnOutsideClick = event => {
-      if (accountMenuRef.current?.contains(event.target) || accountTriggerRef.current?.contains(event.target)) return;
-      setAccountOpen(false);
-    };
-    const closeOnEscape = event => {
-      if (event.key === 'Escape') {
-        setAccountOpen(false);
-        accountTriggerRef.current?.focus();
-      }
-    };
-
-    document.addEventListener('pointerdown', closeOnOutsideClick);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsideClick);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
+    const onPointer = event => { if (!accountRef.current?.contains(event.target)) setAccountOpen(false); };
+    const onKey = event => { if (event.key === 'Escape') setAccountOpen(false); };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onPointer); document.removeEventListener('keydown', onKey); };
   }, [accountOpen]);
 
-  const go = id => {
-    setMoreOpen(false);
-    navigate(`/${id}`);
+  const go = (id, state) => { setMoreOpen(false); setCreateOpen(false); navigate(`/${id}`, state ? { state } : undefined); };
+
+  // „Dodaj”: na sekcji z formularzem otwiera formularz, na pulpicie pyta, co dodać.
+  const requestCreate = () => {
+    if (creatable.includes(activeSection)) window.dispatchEvent(new Event(CREATE_EVENT));
+    else setCreateOpen(true);
+  };
+
+  const today = new Intl.DateTimeFormat(language === 'pl' ? 'pl-PL' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
+  const dateLabel = today.charAt(0).toUpperCase() + today.slice(1);
+  const name = userEmail.split('@')[0] || t('Twoje konto');
+  const moreActive = ['tasks', 'links'].includes(activeSection);
+
+  const tab = id => {
+    const item = sections.find(section => section.id === id);
+    const active = id === activeSection;
+    return (
+      <button
+        key={id}
+        type="button"
+        onClick={() => go(id)}
+        aria-current={active ? 'page' : undefined}
+        className={`mr-1 flex-none rounded-t-xl px-[22px] text-[15px] font-bold transition ${active ? 'min-h-[52px] bg-panel text-ink' : 'min-h-[46px] bg-tab text-muted hover:text-ink'}`}
+      >
+        {t(item.label)}
+        {counts[id] !== undefined && id !== 'today' && <span className="ml-2 font-medium tabular-nums text-faint">{counts[id]}</span>}
+      </button>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white lg:flex">
-      <aside className={`fixed inset-y-0 left-0 z-40 hidden border-r border-white/[0.07] bg-slate-900/80 backdrop-blur-xl transition-[width] duration-300 lg:flex lg:flex-col ${collapsed ? 'w-20' : 'w-64'}`}>
-        <div className={`flex h-20 items-center border-b border-white/[0.06] ${collapsed ? 'justify-center' : 'px-6'}`}>
-          <div className="flex items-center gap-3 overflow-hidden">
-            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 text-white shadow-lg shadow-blue-950/40"><BrainCircuit className="h-6 w-6" /></span>
-            {!collapsed && <span className="text-xl font-bold tracking-tight">Webownik</span>}
-          </div>
-        </div>
-
-        <nav className="flex-1 space-y-1.5 px-3 py-6">
-          {sections.map(item => {
-            const Icon = item.icon;
-            const active = item.id === activeSection;
-            return (
-              <button key={item.id} onClick={() => go(item.id)} title={collapsed ? item.label : undefined} className={`group flex w-full items-center rounded-xl py-3 transition ${collapsed ? 'justify-center px-2' : 'gap-3 px-3.5'} ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-950/30' : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'}`}>
-                <Icon className="h-5 w-5 flex-none" />
-                {!collapsed && <span className="font-medium">{t(item.label)}</span>}
+    <div className="desk relative z-[1] min-h-[100dvh] px-3 pb-[calc(104px+env(safe-area-inset-bottom))] pt-4 text-ink sm:px-6 lg:px-11 lg:pb-11 lg:pt-7">
+      <div className="mx-auto flex max-w-[1320px] flex-col">
+        <header className="flex flex-wrap items-center justify-between gap-x-8 gap-y-3 px-1.5 pb-4 lg:pb-[22px]">
+          <button type="button" onClick={() => go('today')} className="rounded-md" aria-label={t('Webownik, przejdź do pulpitu')}><Logo /></button>
+          <div className="hidden items-center gap-6 text-sm text-muted lg:flex">
+            <span>{dateLabel}</span>
+            <button type="button" className="link" onClick={() => setHelpOpen(true)}>{t('Pomoc')}</button>
+            <button type="button" className="link" onClick={() => navigate('/settings')}>{t('Ustawienia')}</button>
+            <div ref={accountRef} className="relative">
+              <button type="button" aria-haspopup="menu" aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)} className="flex min-h-[44px] items-center gap-1.5 rounded-md px-2 font-bold text-ink hover:bg-ink/5">
+                {name}<ChevronDown className={`h-4 w-4 transition ${accountOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
               </button>
-            );
-          })}
-        </nav>
-
-        <div className="relative space-y-1 border-t border-white/[0.06] p-3">
-          <AnimatePresence>
-            {accountOpen && <motion.div ref={accountMenuRef} initial={{ opacity: 0, y: 8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }} className={`absolute bottom-[6rem] overflow-hidden rounded-2xl border border-white/10 bg-slate-800 p-2 shadow-2xl shadow-black/40 ${collapsed ? 'left-3 w-56' : 'inset-x-3'}`}>
-              <button onClick={() => { setAccountOpen(false); navigate('/settings'); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-200 transition hover:bg-white/[0.07]"><Settings className="h-5 w-5 text-slate-400" /><span className="font-medium">{t('Ustawienia')}</span></button>
-              <button onClick={() => { setAccountOpen(false); navigate('/tutorial'); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-200 transition hover:bg-white/[0.07]"><GraduationCap className="h-5 w-5 text-violet-400" /><span className="font-medium">{t('Tutorial')}</span></button>
-              <button onClick={() => { setAccountOpen(false); setHelpOpen(true); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-200 transition hover:bg-white/[0.07]"><MessageSquareText className="h-5 w-5 text-blue-400" /><span className="font-medium">{t('Pomoc i aktualizacje')}</span></button>
-              <button onClick={toggleLanguage} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-200 transition hover:bg-white/[0.07]"><Languages className="h-5 w-5 text-cyan-500" /><span className="flex-1 font-medium">{t('Język')}</span><span className="text-xs font-semibold uppercase text-slate-500">{language === 'pl' ? 'EN' : 'PL'}</span></button>
-              <button onClick={toggleTheme} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-200 transition hover:bg-white/[0.07]"><span className="relative h-5 w-5">{isDark ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-blue-500" />}</span><span className="flex-1 font-medium">{t('Motyw')}</span><span className="text-xs text-slate-500">{t(isDark ? 'Jasny' : 'Ciemny')}</span></button>
-              <div className="my-1 border-t border-white/[0.07]" />
-              <button onClick={onLogout} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-red-300 transition hover:bg-red-500/10"><LogOut className="h-5 w-5" /><span className="font-medium">Wyloguj się</span></button>
-            </motion.div>}
-          </AnimatePresence>
-          <button ref={accountTriggerRef} onClick={() => setAccountOpen(value => !value)} aria-expanded={accountOpen} aria-haspopup="menu" className={`flex w-full items-center rounded-xl py-2.5 transition hover:bg-white/[0.06] ${collapsed ? 'justify-center px-2' : 'gap-3 px-2.5'}`}>
-            <span className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-600 font-bold text-white shadow-lg shadow-blue-500/20">{userInitial}</span>
-            {!collapsed && <><span className="min-w-0 flex-1 text-left"><span className="block text-sm font-semibold text-white">{t('Twoje konto')}</span><span className="block text-xs text-slate-500">{t('Profil i preferencje')}</span></span><Settings className="h-5 w-5 text-slate-500" /></>}
-          </button>
-          <button onClick={() => setCollapsed(value => !value)} className={`group mt-2 flex w-full items-center rounded-xl border border-white/[0.06] py-2 text-slate-400 transition hover:border-white/10 hover:bg-white/[0.04] hover:text-white ${collapsed ? 'justify-center px-2' : 'justify-between pl-3.5 pr-2'}`} aria-label={collapsed ? 'Rozwiń menu' : 'Zwiń menu'}>
-            {!collapsed && <span className="text-sm font-medium">{t('Zwiń menu')}</span>}
-            <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-white/[0.05] transition group-hover:bg-white/[0.09]">
-              {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
-            </span>
-          </button>
-        </div>
-      </aside>
-
-      <div className={`min-w-0 flex-1 transition-[margin] duration-300 ${collapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
-        <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/85 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8 lg:py-4">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="hidden text-xs font-medium uppercase tracking-[0.2em] text-slate-500 sm:block">{t('Centrum wiedzy')}</p>
-              <h1 className="truncate text-2xl font-bold tracking-tight lg:text-3xl">{t(current.label)}</h1>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-3">
-              {hasCreateAction && <button onClick={() => focusCreateForm(activeSection)} className="hidden items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold shadow-lg shadow-blue-950/30 transition hover:bg-blue-500 sm:flex"><Plus className="h-4 w-4" /> {t('Dodaj')}</button>}
+              {accountOpen && (
+                <div role="menu" className="absolute right-0 top-full z-50 mt-2 flex w-64 flex-col gap-1 rounded-lg bg-panel p-2 text-[15px] text-ink shadow-lift ring-1 ring-ink/10">
+                  <button role="menuitem" type="button" onClick={() => { setAccountOpen(false); navigate('/tutorial'); }} className="min-h-[44px] rounded-md px-3 text-left font-semibold hover:bg-ink/5">{t('Tutorial')}</button>
+                  <button role="menuitem" type="button" onClick={toggleLanguage} className="flex min-h-[44px] items-center justify-between rounded-md px-3 text-left font-semibold hover:bg-ink/5">{t('Język')}<span className="text-sm text-muted">{language === 'pl' ? 'Polski' : 'English'}</span></button>
+                  <button role="menuitem" type="button" onClick={toggleTheme} className="flex min-h-[44px] items-center justify-between rounded-md px-3 text-left font-semibold hover:bg-ink/5">{t('Motyw')}<span className="text-sm text-muted">{t(isDark ? 'Ciemny' : 'Jasny')}</span></button>
+                  <div className="my-1 h-px bg-ink/10" />
+                  <button role="menuitem" type="button" onClick={onLogout} className="min-h-[44px] rounded-md px-3 text-left font-semibold text-accent-text hover:bg-accent/10">{t('Wyloguj się')}</button>
+                </div>
+              )}
             </div>
           </div>
+          <button type="button" onClick={() => setMoreOpen(true)} aria-label={t('Konto i ustawienia')} className="flex h-11 w-11 items-center justify-center rounded-full bg-panel font-bold uppercase text-ink ring-[1.5px] ring-inset ring-ink/15 lg:hidden">{name.charAt(0)}</button>
         </header>
 
-        <main className="mx-auto min-h-[calc(100vh-73px)] max-w-7xl px-4 py-6 pb-28 sm:px-6 lg:px-8 lg:py-8 lg:pb-10">{children}</main>
+        <nav aria-label={t('Sekcje')} className="hidden items-end overflow-x-auto pl-7 lg:flex">
+          {sections.map(section => tab(section.id))}
+        </nav>
+
+        <main className="relative rounded-2xl bg-panel p-4 shadow-lift sm:p-8 lg:rounded-tl-[4px] lg:p-14">
+          {children}
+        </main>
       </div>
 
-      {hasCreateAction && <button onClick={() => focusCreateForm(activeSection)} className="fixed bottom-24 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-violet-600 shadow-xl shadow-blue-950/50 sm:hidden" aria-label="Dodaj nowy element"><Plus className="h-6 w-6" /></button>}
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-900/95 px-4 pb-[max(.65rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl lg:hidden">
-        <div className="mx-auto flex max-w-lg items-center justify-around">
-          {primaryMobile.map(id => {
-            const item = sections.find(section => section.id === id);
-            const Icon = item.icon;
-            const active = activeSection === id;
-            return <button key={id} onClick={() => go(id)} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl px-3 py-1.5 text-[11px] font-medium transition ${active ? 'text-blue-400' : 'text-slate-500'}`}><Icon className="h-5 w-5" />{t(item.label)}</button>;
-          })}
-          <button onClick={() => setMoreOpen(true)} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl px-3 py-1.5 text-[11px] font-medium transition ${['tasks', 'links'].includes(activeSection) ? 'text-blue-400' : 'text-slate-500'}`}><Menu className="h-5 w-5" />{t('Więcej')}</button>
-        </div>
+      <nav aria-label={t('Sekcje')} className="fixed inset-x-0 bottom-0 z-40 flex items-end gap-1 border-t border-ink/15 bg-desk/95 px-2.5 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur lg:hidden">
+        {mobileTabs.slice(0, 2).map(id => (
+          <button key={id} type="button" onClick={() => go(id)} aria-current={activeSection === id ? 'page' : undefined} className={`flex-1 rounded-t-xl text-sm font-bold transition ${activeSection === id ? 'min-h-[62px] bg-panel text-ink' : 'min-h-[56px] bg-tab text-muted'}`}>{t(sections.find(s => s.id === id).label)}</button>
+        ))}
+        <button type="button" onClick={requestCreate} aria-label={t('Dodaj')} className="mb-2 flex h-14 w-14 flex-none items-center justify-center self-center rounded-lg bg-accent text-accent-ink shadow-[inset_0_-3px_0_rgb(0_0_0/0.25)]"><Plus className="h-7 w-7" aria-hidden="true" /></button>
+        <button type="button" onClick={() => go('notes')} aria-current={activeSection === 'notes' ? 'page' : undefined} className={`flex-1 rounded-t-xl text-sm font-bold transition ${activeSection === 'notes' ? 'min-h-[62px] bg-panel text-ink' : 'min-h-[56px] bg-tab text-muted'}`}>{t('Notatki')}</button>
+        <button type="button" onClick={() => setMoreOpen(true)} aria-expanded={moreOpen} className={`flex-1 rounded-t-xl text-sm font-bold transition ${moreActive ? 'min-h-[62px] bg-panel text-ink' : 'min-h-[56px] bg-tab text-muted'}`}>{t('Więcej')}</button>
       </nav>
 
-      <AnimatePresence>
-        {moreOpen && <>
-          <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMoreOpen(false)} className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden" aria-label="Zamknij menu" />
-          <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 300 }} className="fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border-t border-white/10 bg-slate-900 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl lg:hidden">
-            <div className="mb-5 flex items-center justify-between"><div><p className="text-lg font-bold">{t('Więcej')}</p><p className="text-sm text-slate-500">{t('Pozostałe sekcje i konto')}</p></div><button onClick={() => setMoreOpen(false)} className="rounded-xl bg-white/5 p-2 text-slate-400"><X className="h-5 w-5" /></button></div>
-            <div className="grid grid-cols-2 gap-3">
-              {[sections[2], sections[4]].map(item => <button key={item.id} onClick={() => go(item.id)} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-4 text-left"><item.icon className="h-5 w-5 text-blue-400" /><span className="font-medium">{t(item.label)}</span></button>)}
-              <button onClick={() => navigate('/settings')} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-4 text-left"><Settings className="h-5 w-5 text-slate-400" /><span className="font-medium">Ustawienia</span></button>
-              <button onClick={() => navigate('/tutorial')} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-4 text-left"><GraduationCap className="h-5 w-5 text-violet-400" /><span className="font-medium">{t('Tutorial')}</span></button>
-              <button onClick={() => { setMoreOpen(false); setHelpOpen(true); }} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-4 text-left"><MessageSquareText className="h-5 w-5 text-blue-400" /><span className="font-medium">{t('Pomoc')}</span></button>
-              <button onClick={onLogout} className="flex items-center gap-3 rounded-2xl border border-red-500/10 bg-red-500/5 p-4 text-left text-red-300"><LogOut className="h-5 w-5" /><span className="font-medium">Wyloguj się</span></button>
-              <button onClick={() => { toggleLanguage(); setMoreOpen(false); }} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-4 text-left"><Languages className="h-5 w-5 text-cyan-500" /><span className="font-medium">{language === 'pl' ? 'English' : 'Polski'}</span></button>
-              <button onClick={() => { toggleTheme(); setMoreOpen(false); }} className="flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.04] p-4 text-left"><span className="h-5 w-5">{isDark ? <Sun className="h-5 w-5 text-amber-400" /> : <Moon className="h-5 w-5 text-blue-500" />}</span><span className="font-medium">Motyw {isDark ? 'jasny' : 'ciemny'}</span></button>
-            </div>
-          </motion.div>
-        </>}
-      </AnimatePresence>
-      <HelpCenter open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <Modal open={moreOpen} onClose={closeMore} size="sm" title={t('Więcej')} description={userEmail}>
+        <div className="flex flex-col gap-2">
+          <button type="button" className={sheetItem} onClick={() => go('tasks')}>{t('Zadania')}{counts.tasks !== undefined && <span className="text-muted">{counts.tasks}</span>}</button>
+          <button type="button" className={sheetItem} onClick={() => go('links')}>{t('Linki')}{counts.links !== undefined && <span className="text-muted">{counts.links}</span>}</button>
+          <button type="button" className={sheetItem} onClick={() => { setMoreOpen(false); navigate('/settings'); }}>{t('Ustawienia')}</button>
+          <button type="button" className={sheetItem} onClick={() => { setMoreOpen(false); navigate('/tutorial'); }}>{t('Tutorial')}</button>
+          <button type="button" className={sheetItem} onClick={() => { setMoreOpen(false); setHelpOpen(true); }}>{t('Pomoc i aktualizacje')}</button>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" className={sheetItem} onClick={toggleLanguage}>{language === 'pl' ? 'English' : 'Polski'}</button>
+            <button type="button" className={sheetItem} onClick={toggleTheme}>{t(isDark ? 'Motyw jasny' : 'Motyw ciemny')}</button>
+          </div>
+          <button type="button" className={`${sheetItem} text-accent-text ring-accent/60`} onClick={onLogout}>{t('Wyloguj się')}</button>
+        </div>
+      </Modal>
+
+      <Modal open={createOpen} onClose={closeCreate} size="sm" title={t('Co chcesz dodać?')}>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" className={sheetItem} onClick={() => go('decks', { create: true })}>{t('Zestaw')}</button>
+          <button type="button" className={sheetItem} onClick={() => go('tasks', { create: true })}>{t('Zadanie')}</button>
+          <button type="button" className={sheetItem} onClick={() => go('notes', { create: true })}>{t('Notatkę')}</button>
+          <button type="button" className={sheetItem} onClick={() => go('links', { create: true })}>{t('Link')}</button>
+        </div>
+      </Modal>
+
+      <HelpCenter open={helpOpen} onClose={closeHelp} />
     </div>
   );
 };
