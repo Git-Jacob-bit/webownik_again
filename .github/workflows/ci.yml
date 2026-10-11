@@ -105,6 +105,12 @@ jobs:
           set -x
           # API przez nginx (sprawdza też połączenie z bazą jako webownik_app).
           $compose exec -T web wget -qO- http://127.0.0.1:8080/api/health | grep -q '"ok"'
+          # Każdy skrypt i arkusz z index.html jest serwowany (inaczej: biały ekran).
+          assets=$($compose exec -T web wget -qO- http://127.0.0.1:8080/ | grep -oE '(src|href)="/[^"]+\.(js|css|svg)"' | cut -d'"' -f2)
+          [ -n "$assets" ]
+          for asset in $assets; do
+            $compose exec -T web wget -q -O /dev/null "http://127.0.0.1:8080$asset"
+          done
           # Link z maila trafia do GoTrue (303 z błędem tokenu), a nie do SPA.
           # (busybox wget: pokazuje nagłówki pierwszej odpowiedzi, a przekierowanie na domenę
           # publiczną i tak się nie uda w sieci wewnętrznej — liczy się tylko kod GoTrue.)
