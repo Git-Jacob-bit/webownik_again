@@ -7,7 +7,7 @@ jinja2==3.1.6
 email-validator==2.3.0
 pydantic-settings==2.14.2
 httpx==0.28.1
-ctranslate2==4.8.1
+ctranslate2==4.8.2
 minisbd==0.9.5
 packaging==26.2
 sacremoses==0.1.1
