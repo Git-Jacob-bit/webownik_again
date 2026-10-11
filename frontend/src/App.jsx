@@ -18,6 +18,7 @@ import Tutorial from './pages/Tutorial';
 import EmailConfirmed from './pages/EmailConfirmed';
 import api from './api';
 import { useTheme } from './context/ThemeContext';
+import Grain from './components/ui/Grain';
 
 // --- BRAMKARZ (Private Route) ---
 const PrivateRoute = ({ children }) => {
@@ -29,7 +30,7 @@ const PrivateRoute = ({ children }) => {
       .catch(() => { if (active) setState('anonymous'); });
     return () => { active = false; };
   }, []);
-  if (state === 'loading') return <div className="min-h-screen bg-slate-950" aria-label="Sprawdzanie sesji" />;
+  if (state === 'loading') return <div className="desk min-h-[100dvh]" aria-busy="true" aria-label="Sprawdzanie sesji" />;
   if (state === 'anonymous') return <Navigate to="/login" replace />;
   return children;
 };
@@ -41,17 +42,16 @@ function App() {
   return (
     <>
       <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
+        position="bottom-right"
+        autoClose={3500}
+        hideProgressBar
+        newestOnTop
         closeOnClick
-        rtl={false}
         pauseOnFocusLoss
-        draggable
         pauseOnHover
         theme={theme}
       />
+      <Grain />
 
       <AnimatePresence mode="wait">
         <Routes location={location}>

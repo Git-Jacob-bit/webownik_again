@@ -1,85 +1,187 @@
+@import '@fontsource/zilla-slab/latin-ext-500.css';
+@import '@fontsource/zilla-slab/latin-ext-600.css';
+@import '@fontsource/zilla-slab/latin-ext-700.css';
+@import '@fontsource/zilla-slab/latin-500.css';
+@import '@fontsource/zilla-slab/latin-600.css';
+@import '@fontsource/zilla-slab/latin-700.css';
+@import '@fontsource-variable/atkinson-hyperlegible-next/wght.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #020617;
-  color: white;
-  margin: 0;
-  overflow-x: hidden;
-  transition: background-color 200ms ease, color 200ms ease;
+/*
+  Paleta „Espresso”. Biurko (tło), teczka (panel) i fiszki (papier).
+  Wartości to trójki RGB, żeby Tailwind mógł dokładać przezroczystość (np. bg-ink/10).
+  Fiszki są papierowe w obu motywach, a na papierze zawsze piszemy czerwonym długopisem (--c-pen).
+*/
+:root,
+html.dark {
+  --c-desk: 18 14 12;
+  --c-glow: 37 27 22;
+  --c-panel: 34 26 22;
+  --c-tab: 26 20 17;
+  --c-raise: 42 33 28;
+  --c-field: 24 18 16;
+  --c-ink: 243 234 223;
+  --c-muted: 201 188 173;
+  --c-faint: 156 142 128;
+  --c-accent: 226 87 76;
+  --c-accent-ink: 255 246 240;
+  --c-accent-text: 255 154 143;
+  --c-warn: 224 160 80;
+  --c-warn-ink: 42 26 8;
+  --c-ok: 156 192 143;
+  --c-card: 244 235 222;
+  --c-card-ink: 42 30 24;
+  --c-card-muted: 107 88 72;
+  --c-stack1: 220 205 184;
+  --c-stack2: 201 185 162;
+  --c-key: 243 234 223;
+  --c-key-ink: 28 20 16;
+  --c-key-edge: 205 187 164;
+  --c-pen: 194 58 48;
+  --card-edge: transparent;
+  --shadow: rgb(0 0 0 / 0.9);
+  --grain: 0.08;
+  color-scheme: dark;
 }
 
-html.light body {
-  background-color: #f8fafc;
-  color: #0f172a;
+html.light {
+  --c-desk: 232 223 210;
+  --c-glow: 244 237 227;
+  --c-panel: 251 247 241;
+  --c-tab: 223 211 195;
+  --c-raise: 242 235 225;
+  --c-field: 255 255 255;
+  --c-ink: 36 25 21;
+  --c-muted: 84 69 58;
+  --c-faint: 118 98 79;
+  --c-accent: 194 58 48;
+  --c-accent-ink: 255 255 255;
+  --c-accent-text: 168 50 42;
+  --c-warn: 168 100 20;
+  --c-warn-ink: 255 248 238;
+  --c-ok: 63 107 52;
+  --c-card: 255 253 248;
+  --c-card-ink: 36 25 21;
+  --c-card-muted: 107 88 72;
+  --c-stack1: 234 223 208;
+  --c-stack2: 216 202 183;
+  --c-key: 42 30 24;
+  --c-key-ink: 246 239 230;
+  --c-key-edge: 14 9 7;
+  --c-pen: 194 58 48;
+  --card-edge: rgb(36 25 21 / 0.12);
+  --shadow: rgb(70 45 25 / 0.35);
+  --grain: 0.05;
+  color-scheme: light;
 }
 
-/* Jasny motyw dla istniejącego systemu powierzchni opartego na Slate. */
-html.light :is([class~="bg-slate-950"], [class~="bg-slate-950/85"], [class~="bg-slate-950/75"], [class~="bg-slate-950/60"]) { background-color: #f8fafc !important; }
-html.light :is([class~="bg-slate-900"], [class~="bg-slate-900/95"], [class~="bg-slate-900/80"], [class~="bg-slate-900/60"], [class~="bg-slate-900/55"], [class~="bg-slate-900/50"], [class~="bg-slate-900/40"], [class~="bg-slate-900/30"]) { background-color: #fff !important; }
-html.light :is([class~="bg-slate-800"], [class~="bg-slate-800/80"], [class~="bg-slate-800/60"], [class~="bg-slate-800/50"], [class~="bg-slate-800/40"]) { background-color: #f1f5f9 !important; }
-html.light :is([class~="bg-slate-700"], [class~="bg-slate-600"]) { background-color: #e2e8f0 !important; }
-html.light :is([class~="bg-white/5"], [class~="bg-white/10"], [class~="bg-white/[0.025]"], [class~="bg-white/[0.035]"], [class~="bg-white/[0.04]"], [class~="bg-white/[0.045]"], [class~="bg-white/[0.05]"], [class~="bg-white/[0.055]"], [class~="bg-white/[0.06]"], [class~="bg-white/[0.07]"], [class~="bg-white/[0.09]"]) { background-color: rgb(15 23 42 / 0.035) !important; }
-
-html.light :is([class~="border-slate-800"], [class~="border-slate-700"], [class~="border-slate-600"], [class~="border-white/5"], [class~="border-white/10"], [class~="border-white/15"], [class~="border-white/[0.06]"], [class~="border-white/[0.07]"]) { border-color: rgb(203 213 225 / 0.75) !important; }
-
-html.light .text-white,
-html.light [class~="text-slate-200"],
-html.light [class~="text-slate-300"] { color: #0f172a !important; }
-html.light [class~="text-slate-400"] { color: #475569 !important; }
-html.light [class~="text-slate-500"],
-html.light [class~="text-slate-600"] { color: #64748b !important; }
-
-html.light [class*="bg-blue-5"].text-white,
-html.light [class*="bg-blue-6"].text-white,
-html.light [class*="bg-green-5"].text-white,
-html.light [class*="bg-green-6"].text-white,
-html.light [class*="bg-purple-6"].text-white,
-html.light [class*="bg-red-5"].text-white,
-html.light [class*="bg-red-6"].text-white,
-html.light [class*="from-blue-"].text-white,
-html.light [class*="from-violet-"].text-white { color: #fff !important; }
-
-html.light input,
-html.light textarea,
-html.light select { color: #0f172a; }
-html.light input::placeholder,
-html.light textarea::placeholder { color: #64748b; }
-
-/* Akcenty tekstowe muszą być ciemniejsze na jasnych powierzchniach. */
-html.light :is([class~="text-blue-100"], [class~="text-blue-200"], [class~="text-blue-300"], [class~="text-blue-300/70"]) { color: #1d4ed8 !important; }
-html.light :is([class~="text-blue-400"], [class~="text-blue-500"]) { color: #1d4ed8 !important; }
-html.light :is([class~="text-green-200"], [class~="text-green-300"], [class~="text-green-400"]) { color: #15803d !important; }
-html.light [class~="text-cyan-300"] { color: #0e7490 !important; }
-html.light [class~="text-purple-400"] { color: #7e22ce !important; }
-html.light [class~="text-violet-300"] { color: #6d28d9 !important; }
-html.light :is([class~="text-yellow-300"], [class~="text-yellow-400"], [class~="text-yellow-500"], [class~="text-amber-400"], [class~="text-amber-500"]) { color: #b45309 !important; }
-html.light :is([class~="text-red-200"], [class~="text-red-300"], [class~="text-red-400"], [class~="text-red-400/70"], [class~="text-red-500"]) { color: #b91c1c !important; }
-
-html.light :is([class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-green-500"], [class~="bg-green-600"], [class~="bg-purple-600"], [class~="bg-yellow-600"], [class~="bg-red-500"], [class~="bg-red-500/70"]) { color: #fff !important; }
-
-/* Delikatne kolorowe powierzchnie i obramowania w jasnym motywie. */
-html.light :is([class~="bg-blue-500/5"], [class~="bg-blue-500/10"], [class~="bg-blue-500/15"], [class~="bg-blue-500/20"], [class~="bg-blue-500/[0.07]"], [class~="bg-blue-600/20"], [class~="bg-blue-700/15"], [class~="bg-blue-900/20"]) { background-color: #eff6ff !important; }
-html.light :is([class~="bg-green-400/10"], [class~="bg-green-500/5"], [class~="bg-green-500/10"], [class~="bg-green-500/15"], [class~="bg-green-500/20"]) { background-color: #f0fdf4 !important; }
-html.light [class~="bg-cyan-500/10"] { background-color: #ecfeff !important; }
-html.light :is([class~="bg-purple-500/10"], [class~="bg-violet-500/10"], [class~="bg-violet-700/15"], [class~="bg-indigo-900/20"]) { background-color: #f5f3ff !important; }
-html.light :is([class~="bg-yellow-500/10"], [class~="bg-amber-50"], [class~="bg-yellow-100/70"]) { background-color: #fffbeb !important; }
-html.light :is([class~="bg-red-500/5"], [class~="bg-red-500/10"], [class~="bg-red-500/15"], [class~="bg-red-500/20"], [class~="bg-red-900/20"], [class~="bg-red-950/10"]) { background-color: #fef2f2 !important; }
-
-html.light :is([class~="border-blue-400/20"], [class~="border-blue-400/30"], [class~="border-blue-500/10"], [class~="border-blue-500/15"], [class~="border-blue-500/30"], [class~="border-blue-500/50"]) { border-color: #93c5fd !important; }
-html.light :is([class~="border-green-400/30"], [class~="border-green-500/10"], [class~="border-green-500/20"], [class~="border-green-500/30"], [class~="border-green-500/50"]) { border-color: #86efac !important; }
-html.light :is([class~="border-purple-500/30"], [class~="border-purple-500/50"]) { border-color: #c4b5fd !important; }
-html.light :is([class~="border-red-500/10"], [class~="border-red-500/50"], [class~="border-red-900"], [class~="border-red-900/30"]) { border-color: #fca5a5 !important; }
-
-/* Jasna wersja gradientu głównego banera i czytelniejsze cienie. */
-html.light [class~="from-blue-600/15"] {
-  --tw-gradient-from: rgb(219 234 254 / 0.95) var(--tw-gradient-from-position) !important;
-  --tw-gradient-to: rgb(219 234 254 / 0) var(--tw-gradient-to-position) !important;
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    background: rgb(var(--c-desk));
+    color: rgb(var(--c-ink));
+    font-family: theme('fontFamily.sans');
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid rgb(var(--c-accent)); outline-offset: 3px; }
+  input, textarea, select { font-size: 16px; }
+  ::selection { background: rgb(var(--c-accent) / 0.35); }
 }
-html.light [class~="via-slate-900/80"] {
-  --tw-gradient-to: rgb(255 255 255 / 0) var(--tw-gradient-to-position) !important;
-  --tw-gradient-stops: var(--tw-gradient-from), #fff var(--tw-gradient-via-position), var(--tw-gradient-to) !important;
+
+@layer components {
+  /* Biurko: tło aplikacji z ciepłą poświatą. */
+  .desk { background: radial-gradient(1100px 700px at 75% 20%, rgb(var(--c-glow)) 0%, rgb(var(--c-desk)) 70%); }
+
+  /* Link i „cichy” przycisk: podkreślenie w kolorze akcentu. */
+  .link {
+    color: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: rgb(var(--c-accent));
+    text-decoration-thickness: 2px;
+    text-underline-offset: 5px;
+  }
+  .link:hover { text-decoration-color: rgb(var(--c-ink)); }
+
+  /* Papier fiszki z liniaturą zaczynającą się pod czerwoną linią. --rule: odstęp linii, --head: wysokość nagłówka. */
+  .paper {
+    --rule: 34px;
+    --head: 46px;
+    background:
+      repeating-linear-gradient(180deg, transparent 0 calc(var(--rule) - 1px), rgb(70 100 150 / 0.16) calc(var(--rule) - 1px) var(--rule)) 0 var(--head) / 100% calc(100% - var(--head)) no-repeat,
+      rgb(var(--c-card));
+    color: rgb(var(--c-card-ink));
+  }
+
+  /* Kratka z krzyżykiem (checkbox) – działa na <input type="checkbox"> i na elementach z aria-pressed. */
+  .xbox {
+    appearance: none;
+    position: relative;
+    flex: none;
+    width: 26px;
+    height: 26px;
+    margin: 0;
+    border: 2px solid currentColor;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    color: rgb(var(--c-faint));
+  }
+  .xbox:checked,
+  .xbox[aria-pressed='true'] { color: rgb(var(--c-accent)); }
+  .xbox:checked::before, .xbox:checked::after,
+  .xbox[aria-pressed='true']::before, .xbox[aria-pressed='true']::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 50%;
+    height: 3px;
+    margin-top: -1.5px;
+    border-radius: 2px;
+    background: currentColor;
+  }
+  .xbox:checked::before, .xbox[aria-pressed='true']::before { transform: rotate(45deg); }
+  .xbox:checked::after, .xbox[aria-pressed='true']::after { transform: rotate(-45deg); }
+  .on-paper .xbox { color: rgb(74 58 46); }
+  .on-paper .xbox:checked, .on-paper .xbox[aria-pressed='true'] { color: rgb(var(--c-pen)); }
+
+  /* Toasty react-toastify jako pasek papieru. */
+  .Toastify__toast-container { --toastify-toast-width: 380px; }
+  .Toastify__toast.slip {
+    min-height: 52px;
+    border-radius: 6px;
+    padding: 6px 8px 6px 14px;
+    background: rgb(var(--c-key));
+    color: rgb(var(--c-key-ink));
+    font-family: theme('fontFamily.sans');
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: 0 18px 30px -12px var(--shadow);
+    border-left: 4px solid rgb(var(--c-accent));
+  }
+  .Toastify__toast.slip .Toastify__close-button { color: inherit; opacity: 0.7; align-self: center; }
+  .Toastify__toast.slip .Toastify__toast-icon { display: none; }
 }
-html.light [class~="to-violet-600/10"] { --tw-gradient-to: #ede9fe var(--tw-gradient-to-position) !important; }
-html.light [class*="shadow-blue-950/"] { --tw-shadow-color: rgb(30 64 175 / 0.12) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Na telefonie toasty nad dolną nawigacją. */
+@media (max-width: 1023px) {
+  .Toastify__toast-container--bottom-right,
+  .Toastify__toast-container--bottom-center { bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
+
+@keyframes stamp {
+  from { transform: scale(1.9) rotate(-2deg); opacity: 0; }
+  to { transform: scale(1) rotate(-8deg); opacity: 0.9; }
+}
