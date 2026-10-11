@@ -13,6 +13,7 @@ import {
 import AppShell, { sections } from '../components/AppShell';
 import { useLanguage } from '../context/LanguageContext';
 import { useConfirm } from '../context/ConfirmDialogContext';
+import { getErrorMessage } from '../utils/errors';
 
 // --- MODAL POWITALNY ---
 const IntroModal = ({ onClose, onStart }) => {
@@ -125,7 +126,7 @@ const DecksView = () => {
       setDeckName(''); setFiles(null); setCreateOpen(false); fetchDecks();
     } catch (err) { 
       console.error(err);
-      toast.error(err.response?.data?.detail || "Błąd wgrywania.");
+      toast.error(getErrorMessage(err, "Błąd wgrywania."));
     } finally { 
       setIsUploading(false); 
     }
@@ -261,6 +262,7 @@ d) 5`}</code></pre>
 // --- 2. WIDOK ZADAŃ ---
 const TasksView = () => {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -268,7 +270,7 @@ const TasksView = () => {
   const fetchTasks = async () => { try { const res = await api.get('/todos'); setTasks(res.data); } catch (e) { console.error(e); } };
   const addTask = async (e) => { e.preventDefault(); if (!newTask.trim()) return; try { const res = await api.post('/todos', { text: newTask, done: false }); setTasks([...tasks, res.data]); setNewTask(''); toast.success("Zadanie dodane!"); } catch (e) { toast.error("Błąd."); } };
   const toggleTask = async (task) => { const updatedTasks = tasks.map(t => t.id === task.id ? { ...t, done: !t.done } : t); setTasks(updatedTasks); try { await api.put(`/todos/${task.id}`, { text: task.text, done: !task.done }); } catch (e) { fetchTasks(); } };
-  const removeTask = async (id) => { try { await api.delete(`/todos/${id}`); setTasks(tasks.filter(t => t.id !== id)); toast.info("Usunięto."); } catch (e) { console.error(e); } };
+  const removeTask = async (id) => { if (!await confirm({ title: 'Usunąć zadanie?', message: 'Tej operacji nie można cofnąć.' })) return; try { await api.delete(`/todos/${id}`); setTasks(tasks.filter(t => t.id !== id)); toast.info("Usunięto."); } catch (e) { toast.error("Błąd usuwania."); } };
 
   return (
     <div id="create-task" className="scroll-mt-24 bg-white/5 border border-white/10 rounded-2xl p-5 sm:p-6">
@@ -378,7 +380,7 @@ const NotesView = () => {
                   <button onClick={(e) => { e.stopPropagation(); setEditingId(note.id); setTitle(note.title); setContent(note.content); setCreateOpen(true); window.scrollTo({top:0, behavior:'smooth'}); }} className="p-2 bg-slate-900 border border-slate-700 hover:border-yellow-500 text-yellow-500 rounded-lg transition-colors opacity-100 lg:opacity-0 group-hover:opacity-100">
                     <Pencil className="h-4 w-4" />
                   </button>
-                  <button onClick={async (e) => { e.stopPropagation(); if (await confirm({ title: 'Usunąć notatkę?', message: 'Tej operacji nie można cofnąć.' })) { await api.delete(`/notes/${note.id}`); fetchNotes(); toast.info("Usunięto"); } }} className="p-2 bg-slate-900 border border-slate-700 hover:border-red-500 text-red-500 rounded-lg transition-colors opacity-100 lg:opacity-0 group-hover:opacity-100">
+                  <button onClick={async (e) => { e.stopPropagation(); if (await confirm({ title: 'Usunąć notatkę?', message: 'Tej operacji nie można cofnąć.' })) { try { await api.delete(`/notes/${note.id}`); fetchNotes(); toast.info("Usunięto"); } catch (err) { toast.error("Błąd usuwania."); } } }} className="p-2 bg-slate-900 border border-slate-700 hover:border-red-500 text-red-500 rounded-lg transition-colors opacity-100 lg:opacity-0 group-hover:opacity-100">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
@@ -407,8 +409,9 @@ const LinksView = () => {
     let finalUrl = url; if (!url.startsWith('http')) finalUrl = 'https://' + url;
     try { await api.post('/links', { title, url: finalUrl, category: "Ogólne" }); setTitle(""); setUrl(""); fetchLinks(); toast.success("Dodano!"); } catch (e) { toast.error("Błąd."); }
   };
-  const deleteLink = async (id) => { if (!await confirm({ title: 'Usunąć link?', message: 'Tej operacji nie można cofnąć.' })) return; try { await api.delete(`/links/${id}`); fetchLinks(); toast.info("Usunięto"); } catch (e) { console.error(e); } };
-  const getFavicon = (linkUrl) => { try { const domain = new URL(linkUrl).hostname; return `https://www.google.com/s2/favicons?domain=${domain}&sz=128`; } catch (e) { return null; } };
+  const deleteLink = async (id) => { if (!await confirm({ title: 'Usunąć link?', message: 'Tej operacji nie można cofnąć.' })) return; try { await api.delete(`/links/${id}`); fetchLinks(); toast.info("Usunięto"); } catch (e) { toast.error("Błąd usuwania."); } };
+  // Lokalna ikona zamiast zewnętrznego serwisu faviconów — domeny linków nie wychodzą poza aplikację.
+  const getInitial = (linkUrl) => { try { return new URL(linkUrl).hostname.replace(/^www\./, '').charAt(0).toUpperCase(); } catch (e) { return ''; } };
 
   return (
     <div className="space-y-6 pb-4">
@@ -430,9 +433,8 @@ const LinksView = () => {
         {links.map(link => (
           <motion.div key={link.id} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-slate-800/40 border border-slate-700 p-4 rounded-xl flex items-center justify-between group hover:border-blue-500/50 transition-all hover:bg-slate-800/60">
             <div className="flex items-center gap-4 overflow-hidden">
-              <div className="bg-white p-2 rounded-lg flex-shrink-0 h-10 w-10 flex items-center justify-center">
-                <img src={getFavicon(link.url)} alt="icon" className="w-6 h-6 object-contain" onError={(e) => { e.target.style.display = 'none'; }} />
-                <Globe className="h-5 w-5 text-slate-800 absolute opacity-0" />
+              <div className="bg-blue-500/10 text-blue-300 rounded-lg flex-shrink-0 h-10 w-10 flex items-center justify-center font-bold" aria-hidden="true">
+                {getInitial(link.url) || <Globe className="h-5 w-5" />}
               </div>
               <div className="overflow-hidden">
                 <h4 className="text-white font-medium truncate pr-2">{link.title}</h4>

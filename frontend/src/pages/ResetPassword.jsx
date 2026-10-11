@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2, Lock } from 'lucide-react';
 import api from '../api';
 import { toast } from 'react-toastify';
 import InlineMessage from '../components/InlineMessage';
+import { getErrorMessage } from '../utils/errors';
 
 
 const ResetPassword = () => {
@@ -38,7 +39,7 @@ const ResetPassword = () => {
       toast.success('Hasło zostało zmienione.');
       navigate('/login');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Nie udało się zmienić hasła.');
+      setError(getErrorMessage(err, 'Nie udało się zmienić hasła.'));
     } finally {
       setLoading(false);
     }

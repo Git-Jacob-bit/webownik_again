@@ -8,6 +8,7 @@ import { Settings as SettingsIcon } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useConfirm } from '../context/ConfirmDialogContext';
+import { getErrorMessage } from '../utils/errors';
 
 const Settings = () => {
   const navigate = useNavigate();
@@ -50,8 +51,7 @@ const Settings = () => {
       toast.success("Hasło zostało zmienione!");
       setFormData({ old_password: '', new_password: '' });
     } catch (err) {
-      const msg = err.response?.data?.detail || "Nie udało się zmienić hasła.";
-      toast.error(msg);
+      toast.error(getErrorMessage(err, "Nie udało się zmienić hasła."));
     } finally {
       setLoading(false);
     }
@@ -88,8 +88,7 @@ const Settings = () => {
       
     } catch (err) {
       console.error(err);
-      const detail = err.response?.data?.detail;
-      toast.error(typeof detail === 'string' ? detail : "Wystąpił błąd podczas usuwania konta.");
+      toast.error(getErrorMessage(err, "Wystąpił błąd podczas usuwania konta."));
     }
   };
 

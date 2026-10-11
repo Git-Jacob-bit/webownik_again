@@ -53,7 +53,7 @@ const english = {
   'Utworzono zgłoszenie': 'Issue created', 'Nie udało się pobrać changelogu.': 'Could not load the changelog.',
   'Nie opublikowano jeszcze żadnego wydania.': 'No releases have been published yet.', 'Brak dodatkowego opisu.': 'No additional description.',
   'Usunąć zestaw?': 'Delete deck?', 'Zestaw wraz ze wszystkimi pytaniami zostanie trwale usunięty.': 'The deck and all its questions will be permanently deleted.',
-  'Usunąć notatkę?': 'Delete note?', 'Usunąć link?': 'Delete link?', 'Tej operacji nie można cofnąć.': 'This action cannot be undone.',
+  'Usunąć notatkę?': 'Delete note?', 'Usunąć zadanie?': 'Delete task?', 'Usunąć link?': 'Delete link?', 'Tej operacji nie można cofnąć.': 'This action cannot be undone.',
   'Usunąć pytanie?': 'Delete question?', 'Pytanie wraz ze wszystkimi odpowiedziami zostanie trwale usunięte.': 'The question and all its answers will be permanently deleted.',
   'Usunąć konto?': 'Delete account?', 'Tej operacji nie da się cofnąć. Wszystkie Twoje zestawy, pytania i notatki zostaną trwale usunięte.': 'This action cannot be undone. All your decks, questions, and notes will be permanently deleted.',
 };
