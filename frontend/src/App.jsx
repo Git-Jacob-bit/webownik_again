@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 // 1. Importujemy bibliotekę powiadomień i jej style CSS
@@ -11,14 +11,15 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
-import DeckPreview from './pages/DeckPreview'; // <--- DODAJ IMPORT
-import Settings from './pages/Settings'; // <--- 1. CZY MASZ TEN IMPORT?
-import Quiz from './pages/Quiz';
-import Tutorial from './pages/Tutorial';
 import EmailConfirmed from './pages/EmailConfirmed';
 import api from './api';
 import { useTheme } from './context/ThemeContext';
 import Grain from './components/ui/Grain';
+
+const DeckPreview = lazy(() => import('./pages/DeckPreview'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Quiz = lazy(() => import('./pages/Quiz'));
+const Tutorial = lazy(() => import('./pages/Tutorial'));
 
 // --- BRAMKARZ (Private Route) ---
 const PrivateRoute = ({ children }) => {
@@ -54,6 +55,7 @@ function App() {
       <Grain />
 
       <AnimatePresence mode="wait">
+        <Suspense fallback={<div className="desk min-h-[100dvh]" aria-busy="true" />}>
         <Routes location={location}>
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<Login />} />
@@ -110,6 +112,7 @@ function App() {
 
           <Route path="*" element={<Navigate to="/today" replace />} />
         </Routes>
+        </Suspense>
       </AnimatePresence>
     </>
   );

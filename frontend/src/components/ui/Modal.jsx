@@ -10,6 +10,9 @@ const Modal = ({ open, onClose, title, description, children, footer, size = 'md
   const titleId = useId();
   const panelRef = useRef(null);
   const lastFocused = useRef(null);
+  // onClose w ref, żeby nowa funkcja przy każdym renderze nie odpalała efektu i nie zabierała fokusu.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -21,7 +24,7 @@ const Modal = ({ open, onClose, title, description, children, footer, size = 'md
       target?.focus();
     }, 30);
     const onKeyDown = event => {
-      if (event.key === 'Escape') { event.stopPropagation(); onClose(); }
+      if (event.key === 'Escape') { event.stopPropagation(); onCloseRef.current(); }
       if (event.key === 'Tab' && panelRef.current) {
         const items = panelRef.current.querySelectorAll('a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])');
         if (!items.length) return;
@@ -38,7 +41,7 @@ const Modal = ({ open, onClose, title, description, children, footer, size = 'md
       document.removeEventListener('keydown', onKeyDown);
       lastFocused.current?.focus?.();
     };
-  }, [open, onClose, initialFocusRef]);
+  }, [open, initialFocusRef]);
 
   const width = { sm: 'sm:max-w-md', md: 'sm:max-w-xl', lg: 'sm:max-w-2xl' }[size];
 

@@ -1,5 +1,33 @@
-// Tłumaczenia: decks. Klucz = tekst polski, wartość = angielski.
+// Tłumaczenia: decks (lista zestawów i wgrywanie). Klucz = tekst polski, wartość = angielski.
 const decks = {
+  'Nie udało się pobrać zestawów.': 'Could not load decks.',
+  'Wybrany folder nie zawiera plików .txt.': 'The selected folder has no .txt files.',
+  'Pominięto {n} plików innych niż .txt.': 'Skipped {n} files that are not .txt.',
+  'Dozwolone są tylko pliki .txt lub archiwum .zip.': 'Only .txt files or a .zip archive are allowed.',
+  'Archiwum ZIP wybierz osobno, bez dodatkowych plików.': 'Choose the ZIP archive on its own, without other files.',
+  'Podaj nazwę zestawu.': 'Enter a deck name.',
+  'Wybierz pliki .txt, folder z pytaniami albo archiwum ZIP.': 'Choose .txt files, a folder with questions or a ZIP archive.',
+  'Zestaw „{name}” utworzony.': 'Deck “{name}” created.',
+  'Nie udało się wgrać zestawu.': 'Could not upload the deck.',
+  'Zestaw usunięty.': 'Deck deleted.',
+  'Nie udało się usunąć zestawu.': 'Could not delete the deck.',
+  'Wybrano plików: {n}': 'Files selected: {n}',
+  'Pytania w formacie Testownika: maska X1010, pod nią treść pytania, a niżej odpowiedzi.': 'Questions in the Testownik format: an X1010 mask, the question below it and the answers underneath.',
+  'Nazwa zestawu': 'Deck name',
+  'np. Sieci komputerowe, kolokwium 2': 'e.g. Computer networks, midterm 2',
+  'Wybierz pliki': 'Choose files',
+  'Wiele plików .txt albo jedno archiwum .zip': 'Several .txt files or one .zip archive',
+  'Wybierz cały folder': 'Choose a whole folder',
+  'Wczytamy tylko pliki .txt, resztę pominiemy': 'Only .txt files are imported, the rest is skipped',
+  'Utwórz zestaw': 'Create deck',
+  'Szukaj zestawu': 'Search decks',
+  'Usuń zestaw {name}': 'Delete deck {name}',
+  'Ucz się': 'Study',
+  'Nie masz jeszcze zestawów. Wgraj pierwszy w formularzu obok.': 'You have no decks yet. Upload the first one using the form.',
+  'Żaden zestaw nie pasuje do „{q}”.': 'No deck matches “{q}”.',
+  'Wersja angielska gotowa': 'English version ready',
+  'Tłumaczenie {p}%': 'Translating {p}%',
+  'Bez tłumaczenia': 'Not translated',
 };
 
 export default decks;

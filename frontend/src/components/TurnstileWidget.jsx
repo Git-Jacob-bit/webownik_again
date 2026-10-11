@@ -3,7 +3,8 @@ import React, { useEffect, useRef } from 'react';
 
 const SCRIPT_ID = 'cloudflare-turnstile-script';
 
-const TurnstileWidget = ({ onToken }) => {
+// theme: 'light' na papierowej fiszce, 'auto' dopasowuje się do systemu.
+const TurnstileWidget = ({ onToken, theme = 'auto' }) => {
   const container = useRef(null);
   const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
@@ -14,7 +15,7 @@ const TurnstileWidget = ({ onToken }) => {
       if (!container.current || !window.turnstile) return;
       widgetId = window.turnstile.render(container.current, {
         sitekey: siteKey,
-        theme: 'dark',
+        theme,
         callback: onToken,
         'expired-callback': () => onToken(''),
         'error-callback': () => onToken(''),
@@ -36,7 +37,7 @@ const TurnstileWidget = ({ onToken }) => {
     return () => {
       if (widgetId !== undefined && window.turnstile) window.turnstile.remove(widgetId);
     };
-  }, [onToken, siteKey]);
+  }, [onToken, siteKey, theme]);
 
   if (!siteKey) return null;
   return <div ref={container} className="flex min-h-[65px] justify-center" />;

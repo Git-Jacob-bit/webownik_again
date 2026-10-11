@@ -1,145 +1,89 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Loader2, UserPlus } from 'lucide-react';
-import api from '../api'; // <--- ZMIANA: Importujemy nasze api
-import { Link, useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import InlineMessage from '../components/InlineMessage';
+import { useNavigate } from 'react-router-dom';
+import api from '../api';
+import AuthLayout, { AuthCard, PaperLink, paperKey } from '../components/auth/AuthLayout';
 import TurnstileWidget from '../components/TurnstileWidget';
+import Alert from '../components/ui/Alert';
+import Button from '../components/ui/Button';
+import Field, { PasswordField } from '../components/ui/Field';
+import { useLanguage } from '../context/LanguageContext';
 import { getErrorMessage } from '../utils/errors';
 
 function Register() {
+  const { t } = useLanguage();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
-  const navigate = useNavigate();
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const handleRegister = async (event) => {
+    event.preventDefault();
     setError('');
+    if (password.length < 8) return setError('Hasło musi mieć co najmniej 8 znaków.');
+    if (password !== confirmPassword) return setError('Hasła nie są identyczne.');
 
-    if (password !== confirmPassword) {
-      setError("Hasła nie są identyczne.");
-      setIsLoading(false);
-      return;
-    }
-    if (password.length < 8) {
-      setError("Hasło musi mieć co najmniej 8 znaków.");
-      setIsLoading(false);
-      return;
-    }
-
+    setIsLoading(true);
     try {
       await api.post('/auth/register', { email, password, turnstile_token: turnstileToken || null });
-      toast.success("Konto utworzone! Sprawdź skrzynkę e-mail.");
-      navigate('/login');
+      navigate('/login', {
+        state: { notice: { type: 'success', message: 'Konto utworzone. Kliknij link z e-maila, który właśnie wysłaliśmy, a potem zaloguj się.' } },
+      });
     } catch (err) {
-      console.error(err);
-      setError(getErrorMessage(err, "Wystąpił błąd rejestracji."));
+      setError(getErrorMessage(err, 'Nie udało się utworzyć konta. Spróbuj ponownie.'));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      {/* Tło */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-[30%] -left-[10%] w-[70%] h-[70%] rounded-full bg-blue-900/20 blur-[120px]" />
-        <div className="absolute -bottom-[30%] -right-[10%] w-[70%] h-[70%] rounded-full bg-indigo-900/20 blur-[120px]" />
-      </div>
+    <AuthLayout>
+      <AuthCard
+        title={t('Załóż konto')}
+        aside={<PaperLink to="/login">{t('Mam już konto')}</PaperLink>}
+        onSubmit={handleRegister}
+      >
+        <Alert tone="paper">{error && t(error)}</Alert>
 
-      <div className="relative w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-        <div className="p-8">
-          
-          <div className="mb-8 text-center">
-            <h1 className="text-3xl font-bold text-white mb-2">Dołącz do nas</h1>
-            <p className="text-slate-400">Utwórz darmowe konto w Webowniku</p>
-          </div>
+        <Field
+          tone="paper"
+          label={t('E-mail')}
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={event => setEmail(event.target.value)}
+          placeholder={t('ty@uczelnia.pl')}
+          required
+        />
+        <PasswordField
+          tone="paper"
+          label={t('Hasło')}
+          autoComplete="new-password"
+          minLength={8}
+          value={password}
+          onChange={event => setPassword(event.target.value)}
+          hint={t('Co najmniej 8 znaków.')}
+          required
+        />
+        <PasswordField
+          tone="paper"
+          label={t('Powtórz hasło')}
+          autoComplete="new-password"
+          minLength={8}
+          value={confirmPassword}
+          onChange={event => setConfirmPassword(event.target.value)}
+          required
+        />
 
-          <InlineMessage message={error} />
+        <TurnstileWidget onToken={setTurnstileToken} theme="light" />
 
-          <form onSubmit={handleRegister} className="space-y-5">
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Email</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
-                  <Mail className="h-5 w-5" />
-                </div>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                  placeholder="twoj@email.com"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Hasło</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
-                  <Lock className="h-5 w-5" />
-                </div>
-                <input
-                  type="password"
-                  minLength={8}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            </div>
-
-             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Powtórz hasło</label>
-              <div className="relative group">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 group-focus-within:text-blue-400 transition-colors">
-                  <Lock className="h-5 w-5" />
-                </div>
-                <input
-                  type="password"
-                  minLength={8}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-slate-900/50 border border-slate-700 text-white placeholder-slate-500 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-3.5 rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
-            >
-              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <><UserPlus className="h-5 w-5" /> Zarejestruj się</>}
-            </button>
-
-            <TurnstileWidget onToken={setTurnstileToken} />
-
-          </form>
-
-          <div className="mt-8 text-center">
-            <p className="text-slate-400 text-sm">
-              Masz już konto?{' '}
-              <Link to="/login" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
-                Zaloguj się
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+        <Button type="submit" size="lg" block loading={isLoading} className={paperKey}>
+          {t('Załóż konto')}
+        </Button>
+      </AuthCard>
+    </AuthLayout>
   );
 }
 

@@ -2,11 +2,11 @@ import React from 'react';
 
 // Fiszka: papier z nagłówkiem, czerwoną linią i liniaturą. Jasna w obu motywach.
 export const Fiszka = ({
-  as: Component = 'article', label, aside, rule = 34, className = '', bodyClassName = '', children, ...props
+  as: Component = 'article', label, aside, rule = 34, className = '', bodyClassName = '', style, children, ...props
 }) => (
   <Component
     className={`paper on-paper relative rounded-[4px] shadow-paper ${className}`}
-    style={{ '--rule': `${rule}px`, '--head': '46px', ...props.style }}
+    style={{ '--rule': `${rule}px`, '--head': '46px', ...style }}
     {...props}
   >
     <div className="flex h-[43px] items-center justify-between gap-3 px-5 text-[13px] font-semibold text-card-muted">

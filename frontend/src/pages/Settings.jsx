@@ -1,63 +1,85 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import AnimatedPage from '../components/AnimatedPage';
 import api from '../api';
-import { toast } from 'react-toastify';
-import { ArrowLeft, Lock, Save, Loader2, User, Mail, Trash2, ShieldAlert, Moon, Sun, Languages, Download } from 'lucide-react';
-import { Settings as SettingsIcon } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useConfirm } from '../context/ConfirmDialogContext';
 import { getErrorMessage } from '../utils/errors';
+import Button from '../components/ui/Button';
+import { PasswordField } from '../components/ui/Field';
+import Alert from '../components/ui/Alert';
+
+const Section = ({ title, description, danger = false, children }) => (
+  <section className="grid gap-4 border-t border-ink/15 py-8 md:grid-cols-[minmax(0,260px)_minmax(0,1fr)] md:gap-12">
+    <div>
+      <h2 className={`font-slab text-[26px] font-bold leading-tight ${danger ? 'text-accent-text' : ''}`}>{title}</h2>
+      {description && <p className="mt-1.5 leading-relaxed text-muted">{description}</p>}
+    </div>
+    <div className="min-w-0">{children}</div>
+  </section>
+);
+
+// Miniatura biurka z fiszką – podgląd motywu.
+const ThemePreview = ({ variant }) => {
+  const dark = variant === 'dark';
+  return (
+    <span aria-hidden="true" className="flex h-[72px] items-end gap-1.5 rounded-[5px] p-2.5" style={{ background: dark ? '#120E0C' : '#E8DFD2' }}>
+      <span
+        className="h-[46px] w-2/5 rounded-[3px]"
+        style={{
+          background: dark ? '#F4EBDE' : '#FFFDF8',
+          boxShadow: `inset 0 6px 0 ${dark ? '#F4EBDE' : '#FFFDF8'}, inset 0 8px 0 ${dark ? '#E2574C' : '#C23A30'}${dark ? '' : ', 0 0 0 1px rgba(36,25,21,.12)'}`,
+        }}
+      />
+      <span className="h-2.5 flex-1 rounded-sm" style={{ background: dark ? '#3A2C24' : '#D3C6B5' }} />
+    </span>
+  );
+};
+
+const Choice = ({ selected, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-pressed={selected}
+    className={`flex min-h-[52px] flex-col justify-center gap-2.5 rounded-lg p-3 text-left text-[15px] font-bold transition ${selected ? 'ring-[2.5px] ring-inset ring-accent' : 'ring-[1.5px] ring-inset ring-ink/15 hover:ring-ink/30'}`}
+  >
+    {children}
+  </button>
+);
 
 const Settings = () => {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const { language, setLanguage, t } = useLanguage();
   const confirm = useConfirm();
-  const [loading, setLoading] = useState(false);
   const [userInfo, setUserInfo] = useState({ id: '', email: '' });
+  const [passwords, setPasswords] = useState({ old_password: '', new_password: '' });
+  const [passwordState, setPasswordState] = useState({ loading: false, type: '', message: '' });
+  const [exportState, setExportState] = useState({ loading: false, error: '' });
   const [deletePassword, setDeletePassword] = useState('');
-  
-  // Stan do formularza hasła
-  const [formData, setFormData] = useState({
-    old_password: '',
-    new_password: ''
-  });
+  const [deleteState, setDeleteState] = useState({ loading: false, error: '' });
 
-  // 1. Pobierz dane użytkownika przy wejściu na stronę
   useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const res = await api.get('/auth/me');
-        setUserInfo({ id: res.data.id, email: res.data.email });
-      } catch (err) {
-        console.error("Błąd pobierania danych usera", err);
-      }
-    };
-    fetchUserData();
+    api.get('/auth/me')
+      .then(res => setUserInfo({ id: res.data.id, email: res.data.email }))
+      .catch(err => console.error('Błąd pobierania danych użytkownika', err));
   }, []);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  // 2. Obsługa zmiany hasła
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setPasswordState({ loading: true, type: '', message: '' });
     try {
-      await api.post('/auth/change-password', formData);
-      toast.success("Hasło zostało zmienione!");
-      setFormData({ old_password: '', new_password: '' });
+      await api.post('/auth/change-password', passwords);
+      setPasswords({ old_password: '', new_password: '' });
+      setPasswordState({ loading: false, type: 'success', message: t('Hasło zmienione.') });
     } catch (err) {
-      toast.error(getErrorMessage(err, "Nie udało się zmienić hasła."));
-    } finally {
-      setLoading(false);
+      setPasswordState({ loading: false, type: 'error', message: getErrorMessage(err, t('Nie udało się zmienić hasła.')) });
     }
   };
 
   const handleExport = async () => {
+    setExportState({ loading: true, error: '' });
     try {
       const res = await api.get('/account/export', { responseType: 'blob' });
       const url = URL.createObjectURL(res.data);
@@ -66,202 +88,110 @@ const Settings = () => {
       link.download = 'webownik-export.json';
       link.click();
       URL.revokeObjectURL(url);
+      setExportState({ loading: false, error: '' });
     } catch (err) {
-      toast.error("Nie udało się pobrać danych.");
+      setExportState({ loading: false, error: getErrorMessage(err, t('Nie udało się pobrać danych.')) });
     }
   };
 
-  // 3. Obsługa usuwania konta
   const handleDeleteAccount = async (e) => {
     e.preventDefault();
-    if (!await confirm({ title: 'Usunąć konto?', message: 'Tej operacji nie da się cofnąć. Wszystkie Twoje zestawy, pytania i notatki zostaną trwale usunięte.', confirmLabel: 'Usuń konto trwale' })) {
-      return;
-    }
-
+    setDeleteState({ loading: false, error: '' });
+    const ok = await confirm({
+      title: 'Usunąć konto?',
+      message: 'Tej operacji nie da się cofnąć. Wszystkie Twoje zestawy, pytania i notatki zostaną trwale usunięte.',
+      confirmLabel: 'Usuń konto trwale',
+    });
+    if (!ok) return;
+    setDeleteState({ loading: true, error: '' });
     try {
       await api.delete('/auth/me', { data: { password: deletePassword } });
-      
-      toast.info("Twoje konto zostało usunięte. Żegnaj! 👋");
-      
-      // Czyścimy token i wylogowujemy
-      navigate('/');
-      
+      navigate('/login', { state: { notice: { type: 'info', message: 'Konto zostało usunięte.' } } });
     } catch (err) {
-      console.error(err);
-      toast.error(getErrorMessage(err, "Wystąpił błąd podczas usuwania konta."));
+      setDeleteState({ loading: false, error: getErrorMessage(err, t('Nie udało się usunąć konta.')) });
     }
   };
 
   return (
     <AnimatedPage>
-      <div className="min-h-screen bg-slate-950 text-white font-sans p-4 md:p-8 flex items-center justify-center">
-        <div className="w-full max-w-lg space-y-6">
-          
-          <button 
-            onClick={() => navigate('/dashboard')} 
-            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft className="h-5 w-5" /> Powrót do dashboardu
-          </button>
+      <div className="desk relative min-h-[100dvh] px-4 py-6 text-ink sm:px-8 sm:py-8">
+        <div className="relative mx-auto flex max-w-[1080px] flex-col gap-5">
+          <Link to="/today" className="link self-start py-2 text-[15px]">{t('Wróć do pulpitu')}</Link>
+          <main className="rounded-2xl bg-panel px-5 py-7 shadow-lift sm:px-10 sm:py-12 lg:px-14">
+            <h1 className="mb-6 font-slab text-[40px] font-bold leading-none sm:text-[52px]">{t('Ustawienia')}</h1>
 
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-3 bg-blue-600/20 rounded-xl text-blue-500">
-              <SettingsIcon className="h-8 w-8" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">Ustawienia</h1>
-              <p className="text-slate-500 text-sm">Zarządzaj swoim kontem</p>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 text-slate-300">
-              {theme === 'dark' ? <Moon className="h-5 w-5 text-blue-400" /> : <Sun className="h-5 w-5 text-amber-500" />}
-              Wygląd
-            </h3>
-            <p className="mb-4 text-sm text-slate-500">Wybierz motyw interfejsu. Ustawienie zostanie zapamiętane na tym urządzeniu.</p>
-            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-950 p-1.5">
-              <button type="button" onClick={() => setTheme('light')} aria-pressed={theme === 'light'} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${theme === 'light' ? 'bg-white text-slate-900 shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>
-                <Sun className="h-5 w-5 text-amber-500" /> Jasny
-              </button>
-              <button type="button" onClick={() => setTheme('dark')} aria-pressed={theme === 'dark'} className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${theme === 'dark' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>
-                <Moon className="h-5 w-5 text-blue-400" /> Ciemny
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-            <h3 className="mb-2 flex items-center gap-2 text-lg font-semibold text-slate-300"><Languages className="h-5 w-5 text-cyan-500" />{t('Język')}</h3>
-            <p className="mb-4 text-sm text-slate-500">{t('Wybierz język interfejsu. Polski pozostaje językiem źródłowym pytań.')}</p>
-            <div className="grid grid-cols-2 gap-3 rounded-2xl bg-slate-950 p-1.5">
-              <button type="button" onClick={() => setLanguage('pl')} aria-pressed={language === 'pl'} className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${language === 'pl' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>Polski</button>
-              <button type="button" onClick={() => setLanguage('en')} aria-pressed={language === 'en'} className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${language === 'en' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>English</button>
-            </div>
-          </div>
-
-          {/* --- SEKCJA 1: DANE KONTA (READ ONLY) --- */}
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-300">
-              <User className="h-5 w-5" /> Twój Profil
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">Adres Email</label>
-                <div className="relative opacity-60">
-                  <Mail className="absolute left-3 top-2.5 h-5 w-5 text-slate-400" />
-                  <input 
-                    type="text" 
-                    value={userInfo.email || 'Ładowanie...'} 
-                    disabled 
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2 pl-10 pr-4 text-slate-400 cursor-not-allowed"
-                  />
-                  <Lock className="absolute right-3 top-2.5 h-4 w-4 text-slate-600" />
-                </div>
+            <Section title={t('Wygląd')} description={t('Zapamiętamy wybór na tym urządzeniu.')}>
+              <div className="grid max-w-[520px] grid-cols-2 gap-3.5">
+                <Choice selected={theme === 'dark'} onClick={() => setTheme('dark')}><ThemePreview variant="dark" />{t('Ciemny')}</Choice>
+                <Choice selected={theme === 'light'} onClick={() => setTheme('light')}><ThemePreview variant="light" />{t('Jasny')}</Choice>
               </div>
-              
-              <div>
-                <label className="block text-slate-500 text-xs font-bold uppercase mb-1">ID Użytkownika</label>
-                <div className="relative opacity-60">
-                  <div className="absolute left-3 top-2.5 text-slate-400 font-mono">#</div>
-                  <input 
-                    type="text" 
-                    value={userInfo.id || '...'} 
-                    disabled 
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg py-2 pl-10 pr-4 text-slate-400 cursor-not-allowed font-mono"
-                  />
-                  <Lock className="absolute right-3 top-2.5 h-4 w-4 text-slate-600" />
-                </div>
-              </div>
-            </div>
-          </div>
+            </Section>
 
-          {/* --- SEKCJA 2: ZMIANA HASŁA --- */}
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-300">
-              <Lock className="h-5 w-5" /> Bezpieczeństwo
-            </h3>
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <div>
-                <label className="block text-slate-400 text-sm font-medium mb-1">Obecne hasło</label>
-                <input 
-                  type="password" 
+            <Section title={t('Język')} description={t('Pytania zostają po polsku, a wersję angielską tłumaczymy osobno.')}>
+              <div className="grid max-w-[520px] grid-cols-2 gap-3.5">
+                <Choice selected={language === 'pl'} onClick={() => setLanguage('pl')}><span className="text-center">Polski</span></Choice>
+                <Choice selected={language === 'en'} onClick={() => setLanguage('en')}><span className="text-center">English</span></Choice>
+              </div>
+            </Section>
+
+            <Section title={t('Konto')} description={t('Tych danych nie możesz zmienić.')}>
+              <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-3 text-base">
+                <dt className="text-muted">{t('E-mail')}</dt>
+                <dd className="m-0 break-all font-semibold">{userInfo.email || t('Ładowanie…')}</dd>
+                <dt className="text-muted">{t('Identyfikator')}</dt>
+                <dd className="m-0 break-all font-mono text-sm text-muted">{userInfo.id || '…'}</dd>
+              </dl>
+            </Section>
+
+            <Section title={t('Hasło')} description={t('Co najmniej 8 znaków.')}>
+              <form onSubmit={handleChangePassword} className="flex max-w-[520px] flex-col gap-4">
+                <Alert type={passwordState.type || 'error'}>{passwordState.message}</Alert>
+                <PasswordField
+                  label={t('Obecne hasło')}
                   name="old_password"
-                  value={formData.old_password}
-                  onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 focus:border-blue-500 outline-none transition-all"
-                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  value={passwords.old_password}
+                  onChange={e => setPasswords({ ...passwords, old_password: e.target.value })}
                   required
                 />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 text-sm font-medium mb-1">Nowe hasło</label>
-                <input 
-                  type="password" 
+                <PasswordField
+                  label={t('Nowe hasło')}
                   name="new_password"
-                  value={formData.new_password}
-                  onChange={handleChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 focus:border-blue-500 outline-none transition-all"
-                  placeholder="Min. 8 znaków: małe i wielkie litery, cyfra"
+                  autoComplete="new-password"
                   minLength={8}
+                  maxLength={128}
+                  value={passwords.new_password}
+                  onChange={e => setPasswords({ ...passwords, new_password: e.target.value })}
                   required
                 />
+                <Button type="submit" loading={passwordState.loading} className="self-start">{t('Zmień hasło')}</Button>
+              </form>
+            </Section>
+
+            <Section title={t('Twoje dane')} description={t('Zestawy, notatki, zadania, linki i historia nauki w pliku JSON.')}>
+              <div className="flex max-w-[520px] flex-col items-start gap-4">
+                <Alert>{exportState.error}</Alert>
+                <Button variant="outline" onClick={handleExport} loading={exportState.loading}>{t('Pobierz kopię danych')}</Button>
               </div>
+            </Section>
 
-              <button 
-                type="submit" 
-                disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 mt-2"
-              >
-                {loading ? <Loader2 className="animate-spin h-5 w-5" /> : <Save className="h-5 w-5" />}
-                Zmień hasło
-              </button>
-            </form>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-            <h3 className="text-lg font-semibold mb-2 flex items-center gap-2 text-slate-300">
-              <Download className="h-5 w-5" /> Twoje dane
-            </h3>
-            <p className="mb-4 text-sm text-slate-500">Pobierz kopię swoich zestawów, notatek, zadań, linków i historii nauki w formacie JSON.</p>
-            <button
-              type="button"
-              onClick={handleExport}
-              className="w-full border border-slate-700 text-slate-300 hover:bg-slate-800 font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2"
-            >
-              <Download className="h-5 w-5" /> Pobierz moje dane
-            </button>
-          </div>
-
-          {/* --- SEKCJA 3: STREFA NIEBEZPIECZNA --- */}
-          <div className="border border-red-900/30 bg-red-950/10 p-6 rounded-2xl">
-            <h3 className="text-red-500 font-bold mb-2 flex items-center gap-2">
-              <ShieldAlert className="h-5 w-5" /> Strefa Niebezpieczna
-            </h3>
-            <p className="text-red-400/70 text-sm mb-4">
-              Usunięcie konta jest nieodwracalne. Stracisz dostęp do wszystkich swoich zestawów i notatek.
-            </p>
-            <form onSubmit={handleDeleteAccount} className="space-y-3">
-              <label className="block text-red-400/80 text-sm font-medium">Potwierdź obecnym hasłem</label>
-              <input
-                type="password"
-                value={deletePassword}
-                onChange={e => setDeletePassword(e.target.value)}
-                autoComplete="current-password"
-                className="w-full bg-slate-950 border border-red-900/40 rounded-lg p-3 focus:border-red-500 outline-none transition-all"
-                placeholder="••••••••"
-                required
-              />
-              <button
-                type="submit"
-                className="w-full border border-red-900 text-red-500 hover:bg-red-900/20 font-bold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2"
-              >
-                <Trash2 className="h-5 w-5" />
-                Usuń konto trwale
-              </button>
-            </form>
-          </div>
-
+            <Section danger title={t('Usuń konto')} description={t('Usuniemy wszystko na zawsze. Tego nie da się cofnąć.')}>
+              <form onSubmit={handleDeleteAccount} className="flex max-w-[520px] flex-col gap-4">
+                <Alert>{deleteState.error}</Alert>
+                <div className="flex flex-wrap items-end gap-3">
+                  <PasswordField
+                    className="min-w-[220px] flex-1"
+                    label={t('Potwierdź hasłem')}
+                    autoComplete="current-password"
+                    value={deletePassword}
+                    onChange={e => setDeletePassword(e.target.value)}
+                    required
+                  />
+                  <Button type="submit" variant="danger" loading={deleteState.loading}>{t('Usuń konto')}</Button>
+                </div>
+              </form>
+            </Section>
+          </main>
         </div>
       </div>
     </AnimatedPage>
