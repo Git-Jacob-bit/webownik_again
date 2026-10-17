@@ -1,4 +1,4 @@
-FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93 AS builder
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce AS builder
 
 WORKDIR /app
 ENV VIRTUAL_ENV=/opt/venv \
@@ -27,7 +27,7 @@ RUN python -c "import hashlib,urllib.request; p='/tmp/pl-en.argosmodel'; urllib.
     && rm -f /tmp/pl-en.argosmodel \
     && pip uninstall --yes pip setuptools
 
-FROM python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
 
 ENV VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
