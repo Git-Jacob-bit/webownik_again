@@ -1090,9 +1090,9 @@ sqlalchemy==2.0.54 \
     --hash=sha256:f8cc6532f930c27974e9239e5ce5abebe7600ba9807cea4fcf42f1b6cab18fe7 \
     --hash=sha256:ffba7eb2d67c7505e82a0902aa854d8824b74c28a183820d6a8bd3cfd0f812c2
     # via sqlmodel
-sqlmodel==0.0.39 \
-    --hash=sha256:23d8e50a8d8ee936032ed79c55023a5d618dd6bc3c510bbf4909d1a7a605a570 \
-    --hash=sha256:90ebe92ce5cc11d7fff8dc7cb594790a102333c8fe7c14865254f6fc5c939795
+sqlmodel==0.0.48 \
+    --hash=sha256:5582e87e845e23bb1179a7d8b11a4f5e441b4494528a41ee2fe1d129ffe91543 \
+    --hash=sha256:8d389bf735b03a17508e93e888c13a30ef1ddca22dd8e57add12317401e4112e
     # via -r requirements.in
 starlette==1.7.0 \
     --hash=sha256:67f8e99895493dd2911a03f11314af6ceebeae4e704bb9f43dfc6a9db151c93e \
