@@ -1,4 +1,4 @@
 # Instalacja do testów (argostranslate nie jest potrzebny):
 #   pip install --require-hashes -r requirements.txt && pip install -r requirements-dev.txt
-pytest==8.4.2
+pytest==9.1.1
 pyjwt==2.10.1
